@@ -1,8 +1,6 @@
 # NEXUS RESCUE
 ### Disaster Rescue Route Optimizer with Dynamic Hazard Propagation
 
-> **Course:** CSE 124 — Data Structure Lab | **Group:** 5
-
 ---
 
 ## 🚨 Overview
@@ -28,17 +26,6 @@ NEXUS Rescue is a web-based disaster rescue simulation system that computes opti
 - 🔐 **Admin Panel** — Trigger disasters, block roads, assign teams
 - 📡 **Public View** — Read-only map for situational awareness
 - 📋 **System Log** — Real-time operation log with timestamps
-
----
-
-## 🧠 Data Structures Used
-
-| Data Structure | Usage |
-|---|---|
-| Graph (Adjacency List) | City map representation |
-| Min-Heap Priority Queue | Dijkstra's Algorithm |
-| Queue | BFS hazard propagation |
-| Struct + Array | Rescue team and victim management |
 
 ---
 
@@ -101,14 +88,3 @@ All Rescued? → END | New Hazard? → Re-run
 - National emergency coordination network
 
 ---
-
-## 📚 References
-
-1. Cormen et al. *Introduction to Algorithms*, 3rd ed. MIT Press, 2009.
-2. Bangladesh Disaster Management Bureau. www.ddm.gov.bd
-3. GeeksforGeeks. Dijkstra's Algorithm in C. www.geeksforgeeks.org
-4. Sedgewick & Wayne. *Algorithms*, 4th ed. Addison-Wesley, 2011.
-
----
-
-*NEXUS Rescue | Group 5 | CSE 124 — Data Structure Lab*
