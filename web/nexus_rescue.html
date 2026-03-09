@@ -7,855 +7,958 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, remove, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCLsTOnL7HN27R_MH0vivy9Tq-py93X6pE",
+  authDomain: "nexus-rescue-28a98.firebaseapp.com",
+  databaseURL: "https://nexus-rescue-28a98-default-rtdb.firebaseio.com",
+  projectId: "nexus-rescue-28a98",
+  storageBucket: "nexus-rescue-28a98.firebasestorage.app",
+  messagingSenderId: "151024119492",
+  appId: "1:151024119492:web:e7208e7fdff11e23092391"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+/* ── expose DB helpers to global scope ── */
+window._db = {
+  // disasters
+  setDisaster:    (id, data) => set(ref(db, `disasters/${id}`), data),
+  removeDisaster: (id)       => remove(ref(db, `disasters/${id}`)),
+  watchDisasters: (cb)       => onValue(ref(db, 'disasters'), snap => cb(snap.val() || {})),
+
+  // blocks
+  setBlock:    (id, data) => set(ref(db, `blocks/${id}`), data),
+  removeBlock: (id)       => remove(ref(db, `blocks/${id}`)),
+  watchBlocks: (cb)       => onValue(ref(db, 'blocks'), snap => cb(snap.val() || {})),
+
+  // teams
+  setTeam:    (id, data) => set(ref(db, `teams/${id}`), data),
+  removeTeam: (id)       => remove(ref(db, `teams/${id}`)),
+  watchTeams: (cb)       => onValue(ref(db, 'teams'), snap => cb(snap.val() || {})),
+};
+
+// Signal app that Firebase is ready
+window.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
-:root {
-  --bg:       #050d14;
-  --panel:    #0a1520;
-  --border:   #0f2a3d;
-  --accent:   #00e5ff;
-  --danger:   #ff3b3b;
-  --warning:  #ffaa00;
-  --safe:     #00ff88;
-  --team1:    #00e5ff;
-  --team2:    #ff6ec7;
-  --team3:    #ffe066;
-  --text:     #c8dce8;
-  --dim:      #4a6a7d;
-  --glow:     0 0 12px rgba(0,229,255,0.4);
-  --glow-red: 0 0 12px rgba(255,59,59,0.5);
+:root{
+  --bg:#050d14;--panel:#0a1520;--border:#0f2a3d;
+  --accent:#00e5ff;--danger:#ff3b3b;--warning:#ffaa00;--safe:#00ff88;
+  --text:#c8dce8;--dim:#4a6a7d;
+  --glow:0 0 12px rgba(0,229,255,0.4);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+html,body{height:100%;width:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;}
 body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.012) 2px,rgba(0,229,255,0.012) 4px);pointer-events:none;z-index:9999;}
 
 /* HEADER */
-header{height:52px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;position:relative;z-index:1000;}
+header{position:fixed;top:0;left:0;right:0;height:52px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:2000;}
 header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);}
 .logo{font-family:'Orbitron',monospace;font-size:18px;font-weight:900;color:var(--accent);letter-spacing:4px;text-shadow:var(--glow);}
 .logo span{color:var(--danger);}
-.header-right{display:flex;align-items:center;gap:16px;}
-.status-indicator{display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--dim);}
-.pulse-dot{width:7px;height:7px;border-radius:50%;background:var(--safe);animation:pulse 1.5s infinite;}
-.pulse-dot.alert{background:var(--danger);animation:pulse-fast 0.6s infinite;}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
-@keyframes pulse-fast{0%,100%{opacity:1;}50%{opacity:0.2;}}
-.view-toggle{display:flex;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px;}
-.view-btn{padding:4px 12px;font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;border:none;border-radius:3px;cursor:pointer;background:transparent;color:var(--dim);transition:all .2s;}
-.view-btn.active{background:var(--accent);color:var(--bg);box-shadow:var(--glow);}
+.status-pill{display:flex;align-items:center;gap:8px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--dim);}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--safe);animation:kpulse 1.5s infinite;}
+.pulse.red{background:var(--danger);animation:kpulse-fast .6s infinite;}
+.pulse.yellow{background:var(--warning);animation:kpulse .8s infinite;}
+@keyframes kpulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+@keyframes kpulse-fast{0%,100%{opacity:1;}50%{opacity:.2;}}
+.role-badge{font-family:'Share Tech Mono',monospace;font-size:10px;padding:3px 10px;border-radius:3px;letter-spacing:1px;}
+.role-badge.admin{background:rgba(0,229,255,0.1);border:1px solid var(--accent);color:var(--accent);}
+.role-badge.public{background:rgba(74,106,125,0.15);border:1px solid var(--dim);color:var(--dim);}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--safe);display:inline-block;margin-left:4px;}
+.sync-dot.off{background:var(--danger);}
 
 /* LAYOUT */
-.main{flex:1;display:flex;overflow:hidden;}
-#map{flex:1;position:relative;z-index:1;}
-#svg-overlay{position:absolute;inset:0;pointer-events:none;z-index:400;}
+.main{position:fixed;top:52px;left:0;right:0;bottom:0;display:flex;}
+#map{position:absolute;top:0;left:0;right:300px;bottom:0;z-index:1;}
 
 /* SIDEBAR */
-.sidebar{width:330px;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
-.sidebar-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
-.tab{flex:1;padding:11px 4px;font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1px;text-align:center;cursor:pointer;color:var(--dim);border:none;background:transparent;border-bottom:2px solid transparent;transition:all .2s;}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
-.tab-content{display:none;flex:1;overflow-y:auto;padding:14px;flex-direction:column;gap:10px;}
-.tab-content.active{display:flex;}
-.tab-content::-webkit-scrollbar{width:4px;}
-.tab-content::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.sidebar{position:absolute;top:0;right:0;width:300px;bottom:0;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:500;}
+.stabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.stab{flex:1;padding:11px 4px;font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:1px;text-align:center;cursor:pointer;color:var(--dim);border:none;background:transparent;border-bottom:2px solid transparent;transition:all .2s;}
+.stab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tcontent{display:none;flex:1;overflow-y:auto;padding:12px;flex-direction:column;gap:10px;}
+.tcontent.active{display:flex;}
+.tcontent::-webkit-scrollbar{width:4px;}
+.tcontent::-webkit-scrollbar-thumb{background:var(--border);}
 
 /* CARDS */
-.card{background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;padding:12px;}
-.card-title{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--accent);margin-bottom:10px;font-family:'Share Tech Mono',monospace;}
+.card{background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;padding:11px;}
+.ctitle{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--accent);margin-bottom:8px;font-family:'Share Tech Mono',monospace;}
 
 /* BUTTONS */
 .btn{width:100%;padding:8px 12px;border:1px solid var(--border);background:rgba(0,229,255,0.06);color:var(--accent);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;border-radius:4px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:8px;}
 .btn:hover{background:rgba(0,229,255,0.15);box-shadow:var(--glow);}
-.btn.danger{border-color:var(--danger);color:var(--danger);background:rgba(255,59,59,0.06);}
-.btn.danger:hover{background:rgba(255,59,59,0.15);box-shadow:var(--glow-red);}
-.btn.success{border-color:var(--safe);color:var(--safe);background:rgba(0,255,136,0.06);}
+.btn.red{border-color:var(--danger);color:var(--danger);background:rgba(255,59,59,0.06);}
+.btn.red:hover{background:rgba(255,59,59,0.15);}
 .btn.warn{border-color:var(--warning);color:var(--warning);background:rgba(255,170,0,0.06);}
-.btn:disabled{opacity:0.3;cursor:not-allowed;}
-
-/* FORM */
-select,input[type=text],input[type=password]{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;transition:border-color .2s;}
-select:focus,input:focus{border-color:var(--accent);}
-select option{background:var(--panel);}
-label{font-size:10px;color:var(--dim);letter-spacing:1px;display:block;margin-bottom:3px;font-family:'Share Tech Mono',monospace;}
 
 /* STATS */
-.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
-.stat{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
-.stat-val{font-family:'Orbitron',monospace;font-size:18px;font-weight:700;line-height:1;}
-.stat-val.cyan{color:var(--accent);text-shadow:var(--glow);}
-.stat-val.red{color:var(--danger);}
-.stat-val.green{color:var(--safe);}
-.stat-val.yellow{color:var(--warning);}
-.stat-label{font-family:'Share Tech Mono',monospace;font-size:7px;color:var(--dim);letter-spacing:1px;margin-top:3px;}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+.stat{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;}
+.sval{font-family:'Orbitron',monospace;font-size:20px;font-weight:700;line-height:1;}
+.sval.c{color:var(--accent);}.sval.r{color:var(--danger);}.sval.g{color:var(--safe);}
+.slbl{font-family:'Share Tech Mono',monospace;font-size:7px;color:var(--dim);letter-spacing:1px;margin-top:3px;}
 
-/* TEAM LIST */
-.team-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:4px;background:rgba(255,255,255,0.02);border:1px solid var(--border);font-size:12px;font-weight:600;}
-.team-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.team-badge{margin-left:auto;font-size:9px;font-family:'Share Tech Mono',monospace;padding:2px 7px;border-radius:2px;}
-
-/* VICTIM LIST */
-.victim-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:4px;background:rgba(255,59,59,0.05);border:1px solid rgba(255,59,59,0.2);font-size:12px;font-weight:600;}
-.victim-icon{font-size:14px;}
+/* LIST */
+.list-item{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:4px;background:rgba(255,255,255,0.02);border:1px solid var(--border);font-size:12px;font-weight:600;}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.badge{font-size:9px;font-family:'Share Tech Mono',monospace;padding:2px 6px;border-radius:2px;flex-shrink:0;}
 
 /* LOG */
-.log{background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:4px;padding:8px;max-height:200px;overflow-y:auto;font-family:'Share Tech Mono',monospace;font-size:10px;line-height:1.7;}
+.log{background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:4px;padding:8px;max-height:280px;overflow-y:auto;font-family:'Share Tech Mono',monospace;font-size:10px;line-height:1.8;}
 .log::-webkit-scrollbar{width:3px;}
 .log::-webkit-scrollbar-thumb{background:var(--border);}
-.log-entry{padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
-.log-entry.info{color:var(--accent);}
-.log-entry.alert{color:var(--danger);}
-.log-entry.ok{color:var(--safe);}
-.log-entry.warn{color:var(--warning);}
+.le{padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
+.le.info{color:var(--accent);}.le.alert{color:var(--danger);}.le.ok{color:var(--safe);}.le.warn{color:var(--warning);}
 
-/* NODE LIST */
-.node-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;background:rgba(255,255,255,0.02);border:1px solid var(--border);font-size:12px;font-weight:600;}
-.node-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.node-dot.safe{background:var(--safe);box-shadow:0 0 6px var(--safe);}
-.node-dot.warning{background:var(--warning);box-shadow:0 0 6px var(--warning);}
-.node-dot.danger{background:var(--danger);box-shadow:0 0 6px var(--danger);}
-.node-badge{margin-left:auto;font-size:9px;font-family:'Share Tech Mono',monospace;padding:2px 6px;border-radius:2px;}
-.node-badge.safe{background:rgba(0,255,136,0.12);color:var(--safe);}
-.node-badge.warning{background:rgba(255,170,0,0.12);color:var(--warning);}
-.node-badge.danger{background:rgba(255,59,59,0.12);color:var(--danger);}
+/* HINT BAR */
+.hint-bar{position:fixed;bottom:20px;left:calc((100% - 300px)/2);transform:translateX(-50%);background:rgba(10,21,32,0.92);border:1px solid var(--accent);border-radius:20px;padding:8px 20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent);z-index:1000;pointer-events:none;backdrop-filter:blur(4px);box-shadow:var(--glow);white-space:nowrap;}
 
-/* SEC LABEL */
-.sec-label{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;}
+/* MODE BUTTONS */
+.mode-bar{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.mbtn{padding:10px 8px;border:2px solid var(--border);background:rgba(255,255,255,0.02);color:var(--dim);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;border-radius:6px;cursor:pointer;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.mbtn .micon{font-size:18px;}
+.mbtn.team-mode{border-color:var(--accent);color:var(--accent);background:rgba(0,229,255,0.08);box-shadow:var(--glow);}
+.mbtn.disaster-mode{border-color:var(--danger);color:var(--danger);background:rgba(255,59,59,0.08);box-shadow:0 0 10px rgba(255,59,59,0.4);}
+.mbtn.block-mode{border-color:var(--warning);color:var(--warning);background:rgba(255,170,0,0.08);box-shadow:0 0 10px rgba(255,170,0,0.3);}
+
+/* PRIORITY */
+.pbtn{padding:7px 4px;border:1px solid var(--border);background:rgba(255,255,255,0.02);color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:9px;border-radius:4px;cursor:pointer;transition:all .2s;text-align:center;}
+.pbtn.active[data-p="emergency"]{border-color:#ff3b3b;background:rgba(255,59,59,0.15);color:#ff3b3b;box-shadow:0 0 8px rgba(255,59,59,0.3);}
+.pbtn.active[data-p="high"]{border-color:#ff8c00;background:rgba(255,140,0,0.15);color:#ff8c00;}
+.pbtn.active[data-p="medium"]{border-color:#ffaa00;background:rgba(255,170,0,0.15);color:#ffaa00;}
+.pbtn.active[data-p="low"]{border-color:#00ff88;background:rgba(0,255,136,0.12);color:#00ff88;}
+
+/* ICON BUTTONS */
+.icon-btn{background:none;border:1px solid var(--border);color:var(--dim);font-size:11px;border-radius:3px;cursor:pointer;padding:2px 6px;transition:all .2s;flex-shrink:0;font-family:'Share Tech Mono',monospace;line-height:1;}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+.icon-btn.del{border-color:rgba(255,59,59,0.3);color:var(--danger);}
+.icon-btn.del:hover{background:rgba(255,59,59,0.15);}
+.name-input{background:rgba(0,229,255,0.06);border:1px solid var(--accent);color:var(--accent);font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:700;padding:3px 6px;border-radius:3px;width:100%;outline:none;}
+
+/* DISASTER ITEM */
+.d-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:4px;background:rgba(255,59,59,0.05);border:1px solid rgba(255,59,59,0.2);font-size:11px;}
+.d-info{flex:1;min-width:0;}
+.d-name{font-weight:700;}
+.d-sub{font-size:9px;color:var(--dim);font-family:'Share Tech Mono',monospace;}
+.d-clear{background:none;border:1px solid rgba(255,59,59,0.4);color:#ff3b3b;font-size:11px;border-radius:3px;cursor:pointer;padding:2px 6px;flex-shrink:0;}
+.d-clear:hover{background:rgba(255,59,59,0.2);}
+.p-badge{font-size:8px;font-family:'Share Tech Mono',monospace;padding:2px 5px;border-radius:2px;flex-shrink:0;}
+
+/* BLOCK ITEM */
+.b-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:4px;background:rgba(255,170,0,0.05);border:1px solid rgba(255,170,0,0.2);font-size:10px;font-family:'Share Tech Mono',monospace;color:var(--warning);}
+.b-info{flex:1;min-width:0;overflow:hidden;}
+.b-clear{background:none;border:1px solid rgba(255,170,0,0.3);color:var(--warning);font-size:11px;border-radius:3px;cursor:pointer;padding:2px 6px;flex-shrink:0;}
+
+/* ROUTE INFO */
+.route-info{background:rgba(26,115,232,0.1);border:1px solid rgba(26,115,232,0.35);border-radius:5px;padding:9px;font-family:'Share Tech Mono',monospace;font-size:10px;color:#7bb8ff;line-height:1.8;}
 
 /* LOGIN */
-#login-overlay{position:fixed;inset:0;background:rgba(5,13,20,0.96);display:flex;align-items:center;justify-content:center;z-index:9000;backdrop-filter:blur(4px);}
-.login-box{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:36px;width:340px;display:flex;flex-direction:column;gap:14px;position:relative;}
-.login-box::before{content:'';position:absolute;top:0;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);}
-.login-title{font-family:'Orbitron',monospace;font-size:15px;font-weight:900;color:var(--accent);letter-spacing:3px;text-align:center;text-shadow:var(--glow);}
-.login-sub{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim);text-align:center;letter-spacing:2px;}
-.login-btn{padding:11px;background:linear-gradient(135deg,rgba(0,229,255,0.15),rgba(0,229,255,0.05));border:1px solid var(--accent);color:var(--accent);font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;border-radius:4px;cursor:pointer;transition:all .2s;width:100%;}
-.login-btn:hover{background:rgba(0,229,255,0.25);box-shadow:var(--glow);}
-.login-hint{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:center;opacity:.6;}
-.login-err{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--danger);text-align:center;display:none;}
+#login-overlay{position:fixed;inset:0;background:rgba(5,13,20,0.97);display:flex;align-items:center;justify-content:center;z-index:9000;backdrop-filter:blur(6px);}
+.lbox{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:30px;width:360px;display:flex;flex-direction:column;gap:12px;position:relative;}
+.lbox::before{content:'';position:absolute;top:0;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);border-radius:2px;}
+.ltitle{font-family:'Orbitron',monospace;font-size:16px;font-weight:900;color:var(--accent);letter-spacing:3px;text-align:center;text-shadow:var(--glow);}
+.lsub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:center;letter-spacing:2px;}
+.lsection{border:1px solid var(--border);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:9px;}
+.lsection-title{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;}
+.ldivider{display:flex;align-items:center;gap:10px;}
+.ldivider span{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);}
+.ldivider::before,.ldivider::after{content:'';flex:1;height:1px;background:var(--border);}
+.lbtn{padding:10px;border-radius:4px;cursor:pointer;font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;transition:all .2s;width:100%;}
+.lbtn.admin{background:linear-gradient(135deg,rgba(0,229,255,0.15),rgba(0,229,255,0.05));border:1px solid var(--accent);color:var(--accent);}
+.lbtn.admin:hover{background:rgba(0,229,255,0.25);box-shadow:var(--glow);}
+.lbtn.pub{background:transparent;border:1px solid var(--dim);color:var(--dim);}
+.lbtn.pub:hover{border-color:var(--text);color:var(--text);}
+.lerr{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--danger);text-align:center;display:none;}
+.lhint{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:center;opacity:.5;}
+label{font-size:10px;color:var(--dim);letter-spacing:1px;display:block;margin-bottom:3px;font-family:'Share Tech Mono',monospace;}
+input[type=text],input[type=password]{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;transition:border-color .2s;}
+input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
 
-/* ROUTE ANIMATION */
-@keyframes route-draw{from{stroke-dashoffset:2000;}to{stroke-dashoffset:0;}}
-.route-line{stroke-dasharray:2000;stroke-dashoffset:2000;animation:route-draw 1.2s ease forwards;}
+/* POPUP */
+.nexus-popup .leaflet-popup-content-wrapper{background:#0a1520;border:1px solid #1a3a50;border-radius:6px;box-shadow:0 0 20px rgba(0,229,255,0.2);color:#c8dce8;}
+.nexus-popup .leaflet-popup-tip{background:#0a1520;}
+.nexus-popup .leaflet-popup-content{margin:12px 14px;}
+.leaflet-tooltip-dark{background:#0a1520!important;border:1px solid #0f2a3d!important;color:#00e5ff!important;font-family:'Share Tech Mono',monospace!important;font-size:10px!important;}
+.pub-hint{text-align:center;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);padding:8px;border:1px solid var(--border);border-radius:4px;letter-spacing:1px;}
 
-::-webkit-scrollbar{width:4px;}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+/* LOADING */
+#loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:8000;gap:16px;}
+.loading-logo{font-family:'Orbitron',monospace;font-size:22px;font-weight:900;color:var(--accent);letter-spacing:4px;text-shadow:var(--glow);}
+.loading-bar{width:200px;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
+.loading-fill{height:100%;background:var(--accent);animation:fill 1.5s ease-in-out infinite;box-shadow:var(--glow);}
+@keyframes fill{0%{width:0%;}100%{width:100%;}}
+.loading-txt{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:2px;}
 </style>
 </head>
 <body>
 
+<!-- LOADING -->
+<div id="loading-screen">
+  <div class="loading-logo">NEXUS <span style="color:var(--danger);">RESCUE</span></div>
+  <div class="loading-bar"><div class="loading-fill"></div></div>
+  <div class="loading-txt">CONNECTING TO FIREBASE...</div>
+</div>
+
 <!-- LOGIN -->
-<div id="login-overlay">
-  <div class="login-box">
-    <div class="login-title">NEXUS RESCUE</div>
-    <div class="login-sub">ADMIN AUTHENTICATION REQUIRED</div>
-    <div><label>USERNAME</label><input type="text" id="login-user" placeholder="admin" value="admin"/></div>
-    <div><label>PASSWORD</label><input type="password" id="login-pass" placeholder="••••••••"/></div>
-    <div class="login-err" id="login-err">⚠ INVALID CREDENTIALS</div>
-    <button class="login-btn" onclick="doLogin()">ACCESS SYSTEM</button>
-    <div class="login-hint">hint: admin / nexus123</div>
-    <button class="login-btn" style="background:transparent;border-color:var(--dim);color:var(--dim);font-size:10px;margin-top:4px;" onclick="publicView()">CONTINUE AS PUBLIC →</button>
+<div id="login-overlay" style="display:none;">
+  <div class="lbox">
+    <div class="ltitle">NEXUS RESCUE</div>
+    <div class="lsub">DISASTER ROUTE OPTIMIZER · GROUP 5</div>
+
+    <div class="lsection">
+      <div class="lsection-title" style="color:var(--accent);">🔐 ADMIN ACCESS</div>
+      <div><label>USERNAME</label><input type="text" id="lu" value="admin" placeholder="admin"/></div>
+      <div><label>PASSWORD</label><input type="password" id="lp" placeholder="••••••••"/></div>
+      <div class="lerr" id="lerr">⚠ INVALID CREDENTIALS</div>
+      <button class="lbtn admin" onclick="doLogin()">LOGIN AS ADMIN</button>
+      <div class="lhint">hint: admin / nexus123</div>
+    </div>
+
+    <div class="ldivider"><span>OR</span></div>
+
+    <div class="lsection">
+      <div class="lsection-title" style="color:var(--dim);">👁 PUBLIC VIEW</div>
+      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);line-height:1.8;">
+        View disaster locations, active rescue routes and blocked roads. Real-time updates enabled.
+      </div>
+      <button class="lbtn pub" onclick="enterPublic()">ENTER AS PUBLIC</button>
+    </div>
   </div>
 </div>
 
 <!-- HEADER -->
 <header>
   <div class="logo">NEXUS <span>RESCUE</span></div>
-  <div class="header-right">
-    <div class="status-indicator">
-      <div class="pulse-dot" id="sys-dot"></div>
-      <span id="sys-status">SYSTEM NOMINAL</span>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="status-pill">
+      <div class="pulse" id="sys-dot"></div>
+      <span id="sys-status">CONNECTING...</span>
     </div>
-    <div class="view-toggle">
-      <button class="view-btn active" id="btn-admin" onclick="switchView('admin')">ADMIN</button>
-      <button class="view-btn" id="btn-public" onclick="switchView('public')">PUBLIC</button>
+    <div style="display:flex;align-items:center;gap:6px;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-label">SYNCING</span>
     </div>
+    <div class="role-badge admin" id="role-badge">ADMIN</div>
   </div>
 </header>
 
 <!-- MAIN -->
 <div class="main">
-  <div style="flex:1;position:relative;">
-    <div id="map"></div>
-    <svg id="svg-overlay"></svg>
-  </div>
+  <div id="map"></div>
+  <div class="hint-bar" id="hint-bar">—</div>
 
   <div class="sidebar">
-    <div class="sidebar-tabs">
-      <button class="tab active" onclick="openTab('tab-control')">CONTROL</button>
-      <button class="tab" onclick="openTab('tab-teams')">TEAMS</button>
-      <button class="tab" onclick="openTab('tab-map')">MAP</button>
-      <button class="tab" onclick="openTab('tab-log')">LOG</button>
-    </div>
 
-    <!-- CONTROL TAB -->
-    <div class="tab-content active" id="tab-control">
-      <div class="stats-bar">
-        <div class="stat"><div class="stat-val cyan" id="s-safe">7</div><div class="stat-label">SAFE</div></div>
-        <div class="stat"><div class="stat-val red"  id="s-danger">0</div><div class="stat-label">DANGER</div></div>
-        <div class="stat"><div class="stat-val green" id="s-rescued">0</div><div class="stat-label">RESCUED</div></div>
-        <div class="stat"><div class="stat-val yellow" id="s-stranded">0</div><div class="stat-label">STRANDED</div></div>
+    <!-- ADMIN SIDEBAR -->
+    <div id="admin-sidebar" style="display:none;flex-direction:column;height:100%;">
+      <div class="stabs">
+        <button class="stab active" onclick="openTab('tc')">CONTROL</button>
+        <button class="stab" onclick="openTab('tt')">TEAMS</button>
+        <button class="stab" onclick="openTab('tl')">LOG</button>
       </div>
 
-      <div class="card" id="hazard-card">
-        <div class="card-title">🌊 HAZARD CONTROL</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <div><label>DISASTER ORIGIN</label>
-            <select id="hazard-origin"><option value="">— select —</option></select></div>
-          <div><label>SPREAD RADIUS</label>
-            <select id="hazard-level">
-              <option value="1">Level 1 — Immediate</option>
-              <option value="2">Level 2 — Wide</option>
-              <option value="3">Level 3 — City-wide</option>
-            </select></div>
-          <button class="btn danger" onclick="triggerHazard()">🌊 TRIGGER DISASTER</button>
-          <button class="btn" onclick="resetMap()">↺ RESET MAP</button>
+      <div class="tcontent active" id="tc">
+        <div class="stats">
+          <div class="stat"><div class="sval c" id="s-teams">0</div><div class="slbl">TEAMS</div></div>
+          <div class="stat"><div class="sval r" id="s-disasters">0</div><div class="slbl">DISASTERS</div></div>
+          <div class="stat"><div class="sval g" id="s-routes">0</div><div class="slbl">ROUTES</div></div>
         </div>
-      </div>
 
-      <div class="card" id="victim-card">
-        <div class="card-title">🆘 ADD VICTIM</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <div><label>VICTIM LOCATION</label>
-            <select id="victim-loc"><option value="">— select —</option></select></div>
-          <button class="btn danger" onclick="addVictim()">+ ADD VICTIM</button>
+        <div class="mode-bar">
+          <button class="mbtn" id="mbtn-team" onclick="setMode('team')"><span class="micon">🚁</span><span>ADD TEAM</span></button>
+          <button class="mbtn" id="mbtn-disaster" onclick="setMode('disaster')"><span class="micon">🔴</span><span>SET DISASTER</span></button>
+          <button class="mbtn" id="mbtn-block" onclick="setMode('block')" style="grid-column:span 2;"><span class="micon">🚧</span><span>BLOCK ROAD (click 2 points)</span></button>
         </div>
-      </div>
 
-      <div class="card" id="rescue-card">
-        <div class="card-title">🚁 RESCUE OPERATION</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button class="btn success" onclick="runGreedyAssignment()">▶ AUTO-ASSIGN ALL TEAMS</button>
-          <div style="display:flex;gap:6px;">
-            <div style="flex:1"><label>TEAM</label>
-              <select id="manual-team"><option value="">— team —</option></select></div>
-            <div style="flex:1"><label>VICTIM</label>
-              <select id="manual-victim"><option value="">— victim —</option></select></div>
+        <div class="card">
+          <div class="ctitle">🚨 DISASTER PRIORITY</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <button class="pbtn active" data-p="emergency" onclick="selectPriority('emergency')">🔴 EMERGENCY</button>
+            <button class="pbtn" data-p="high" onclick="selectPriority('high')">🟠 HIGH</button>
+            <button class="pbtn" data-p="medium" onclick="selectPriority('medium')">🟡 MEDIUM</button>
+            <button class="pbtn" data-p="low" onclick="selectPriority('low')">🟢 LOW</button>
           </div>
-          <button class="btn" onclick="runManualRescue()">▶ MANUAL ASSIGN</button>
+        </div>
+
+        <div class="card">
+          <div class="ctitle">⚡ ACTIONS</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button class="btn red" onclick="clearAllDisasters()">🗑 CLEAR ALL DISASTERS</button>
+            <button class="btn red" onclick="clearAllRoutes()">🗑 CLEAR ALL ROUTES</button>
+            <button class="btn warn" onclick="clearAllBlocks()">🚧 CLEAR BLOCKED ROADS</button>
+            <button class="btn" onclick="resetAll()">↺ RESET ALL</button>
+          </div>
+        </div>
+
+        <div class="card" id="disaster-list-card" style="display:none;">
+          <div class="ctitle">📍 ACTIVE DISASTERS</div>
+          <div id="disaster-list" style="display:flex;flex-direction:column;gap:5px;"></div>
+        </div>
+
+        <div class="card" id="route-card" style="display:none;">
+          <div class="ctitle">🗺 LAST ROUTE</div>
+          <div class="route-info" id="route-info"></div>
+        </div>
+
+        <div class="card" id="blocked-card" style="display:none;">
+          <div class="ctitle">🚧 BLOCKED ROADS</div>
+          <div id="blocked-list" style="display:flex;flex-direction:column;gap:5px;"></div>
+        </div>
+      </div>
+
+      <div class="tcontent" id="tt">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);">RESCUE TEAMS</div>
+        <div id="team-list" style="display:flex;flex-direction:column;gap:5px;"></div>
+      </div>
+
+      <div class="tcontent" id="tl">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);">SYSTEM LOG</div>
+        <div class="log" id="sys-log"></div>
+        <button class="btn" style="margin-top:4px;" onclick="document.getElementById('sys-log').innerHTML=''">🗑 CLEAR LOG</button>
+      </div>
+    </div>
+
+    <!-- PUBLIC SIDEBAR -->
+    <div id="public-sidebar" style="display:none;flex-direction:column;height:100%;">
+      <div style="padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <div class="pub-hint">👁 LIVE VIEW — Click team marker for details</div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;">
+        <div class="stats">
+          <div class="stat"><div class="sval c" id="ps-teams">0</div><div class="slbl">TEAMS</div></div>
+          <div class="stat"><div class="sval r" id="ps-disasters">0</div><div class="slbl">DISASTERS</div></div>
+          <div class="stat"><div class="sval g" id="ps-routes">0</div><div class="slbl">ROUTES</div></div>
+        </div>
+        <div class="card">
+          <div class="ctitle">🚁 RESCUE TEAMS</div>
+          <div id="pub-team-list" style="display:flex;flex-direction:column;gap:5px;"></div>
+        </div>
+        <div class="card">
+          <div class="ctitle">🔴 ACTIVE DISASTERS</div>
+          <div id="pub-disaster-list" style="display:flex;flex-direction:column;gap:5px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim);">No active disasters.</div>
+          </div>
+        </div>
+        <div class="card" id="pub-blocked-card" style="display:none;">
+          <div class="ctitle">🚧 BLOCKED ROADS</div>
+          <div id="pub-blocked-list" style="display:flex;flex-direction:column;gap:5px;"></div>
         </div>
       </div>
     </div>
 
-    <!-- TEAMS TAB -->
-    <div class="tab-content" id="tab-teams">
-      <div class="sec-label">RESCUE TEAMS</div>
-      <div id="team-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-      <div class="sec-label" style="margin-top:8px;">VICTIMS</div>
-      <div id="victim-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-    </div>
-
-    <!-- MAP TAB -->
-    <div class="tab-content" id="tab-map">
-      <div class="sec-label">LOCATION STATUS</div>
-      <div id="node-list" style="display:flex;flex-direction:column;gap:4px;"></div>
-    </div>
-
-    <!-- LOG TAB -->
-    <div class="tab-content" id="tab-log">
-      <div class="sec-label">SYSTEM LOG</div>
-      <div class="log" id="sys-log"></div>
-      <button class="btn" style="margin-top:4px;" onclick="clearLog()">🗑 CLEAR LOG</button>
-    </div>
   </div>
 </div>
 
 <script>
 /* ══════════════════════════════════════════
- *  DATA
+ *  CONFIG
  * ══════════════════════════════════════════ */
-const NODES = [
-  {id:0,name:"Mirpur",    lat:23.8041,lng:90.3664},
-  {id:1,name:"Farmgate",  lat:23.7591,lng:90.3897},
-  {id:2,name:"Gulshan",   lat:23.7806,lng:90.4152},
-  {id:3,name:"Mohakhali", lat:23.7770,lng:90.4050},
-  {id:4,name:"Dhanmondi", lat:23.7461,lng:90.3742},
-  {id:5,name:"Motijheel", lat:23.7330,lng:90.4178},
-  {id:6,name:"Badda",     lat:23.7772,lng:90.4367},
+const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjRmNzFmOGNhZGE3NjRkZjhiZTZiMzg0MzNkMDAxNGQ1IiwiaCI6Im11cm11cjY0In0=';
+const ORS_URL = 'https://api.openrouteservice.org/v2/directions/driving-car/geojson';
+
+const TEAM_COLORS = ['#00e5ff','#ff6ec7','#ffe066','#00ff88','#bf5fff','#ff9944'];
+const INITIAL_TEAMS = [
+  {id:'alpha', name:'Alpha Team', lat:23.8041, lng:90.3664},
+  {id:'bravo', name:'Bravo Team', lat:23.7591, lng:90.3897},
+  {id:'delta', name:'Delta Team', lat:23.7806, lng:90.4152},
+  {id:'echo',  name:'Echo Team',  lat:23.7330, lng:90.4178},
 ];
-const EDGES = [
-  [0,1,5],[1,2,4],[1,4,3],[2,3,2],
-  [3,6,3],[6,5,6],[4,5,7],[0,4,8],[3,5,5]
-];
-const TEAM_COLORS = ['#00e5ff','#ff6ec7','#ffe066'];
-const TEAM_NAMES  = ['Alpha Team','Bravo Team','Delta Team'];
-const TEAM_BASES  = [5, 6, 3]; // Motijheel, Badda, Mohakhali
+const PRIORITY = {
+  emergency:{label:'EMERGENCY',color:'#ff3b3b',icon:'🔴',order:0},
+  high:     {label:'HIGH',     color:'#ff8c00',icon:'🟠',order:1},
+  medium:   {label:'MEDIUM',   color:'#ffaa00',icon:'🟡',order:2},
+  low:      {label:'LOW',      color:'#00ff88',icon:'🟢',order:3},
+};
 
 /* ══════════════════════════════════════════
- *  STATE
+ *  STATE  (local render state only)
  * ══════════════════════════════════════════ */
-let state = {
-  hazardLevel: new Array(7).fill(0),
-  blocked:     {},
-  teams: TEAM_NAMES.map((name,i) => ({
-    id:i+1, name, location:TEAM_BASES[i],
-    available:true, color:TEAM_COLORS[i]
-  })),
-  victims:     [],
-  victimCounter: 0,
-  isAdmin:     false,
-  routeElements: [],
+const S = {
+  isAdmin:   false,
+  mode:      'disaster',
+  priority:  'emergency',
+  // local marker/layer cache keyed by Firebase id
+  teamMarkers:    {}, // id → {marker, color}
+  disMarkers:     {}, // id → {marker, routeLayers}
+  blockLayers:    {}, // id → {line, m1, m2}
+  // raw Firebase data
+  fbTeams:     {},
+  fbDisasters: {},
+  fbBlocks:    {},
+  // block picking
+  blkPt1: null, blkMark: null,
+  // routing animation timers
+  animTimers: [],
 };
 
 /* ══════════════════════════════════════════
  *  MAP
  * ══════════════════════════════════════════ */
-const map = L.map('map',{center:[23.762,90.395],zoom:13,zoomControl:true,attributionControl:false});
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
-const svg = document.getElementById('svg-overlay');
+const map = L.map('map', {center:[23.762,90.395], zoom:13, scrollWheelZoom:true});
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom:19, attribution:'© OpenStreetMap © CARTO'
+}).addTo(map);
+setTimeout(() => map.invalidateSize(), 200);
+
+map.on('click', async e => {
+  if (!S.isAdmin) return;
+  const {lat,lng} = e.latlng;
+  if      (S.mode==='team')     await fbAddTeam(lat, lng);
+  else if (S.mode==='disaster') await fbAddDisaster(lat, lng);
+  else if (S.mode==='block')    handleBlock(lat, lng);
+});
+
+/* ══════════════════════════════════════════
+ *  ICONS
+ * ══════════════════════════════════════════ */
+function teamIcon(color, name, onMission) {
+  const st = onMission
+    ? `<div style="background:rgba(255,170,0,0.9);color:#000;font-family:'Share Tech Mono',monospace;font-size:7px;padding:1px 4px;border-radius:2px;text-align:center;margin-top:1px;">ON MISSION</div>` : '';
+  return L.divIcon({
+    className:'',
+    html:`<div style="background:${color}22;border:2px solid ${color};border-radius:50% 50% 50% 0;width:34px;height:34px;transform:rotate(-45deg);box-shadow:0 0 10px ${color}88;display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);font-size:15px;">🚁</span></div>
+    <div style="background:rgba(10,21,32,0.9);border:1px solid ${color};border-radius:3px;padding:1px 5px;font-family:'Share Tech Mono',monospace;font-size:8px;color:${color};white-space:nowrap;text-align:center;margin-top:2px;">${name}</div>${st}`,
+    iconSize:[64,56], iconAnchor:[17,34],
+  });
+}
+function disasterIcon(p) {
+  const c = PRIORITY[p];
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:40px;height:40px;background:${c.color}20;border:2px solid ${c.color};border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px ${c.color}99;font-size:19px;animation:dpulse 1s infinite;">${c.icon}</div>
+    <div style="background:rgba(10,21,32,0.9);border:1px solid ${c.color};border-radius:3px;padding:1px 5px;font-family:'Share Tech Mono',monospace;font-size:8px;color:${c.color};text-align:center;margin-top:2px;white-space:nowrap;">${c.label}</div>
+    <style>@keyframes dpulse{0%,100%{box-shadow:0 0 14px ${c.color}99;}50%{box-shadow:0 0 26px ${c.color}cc;}}</style>`,
+    iconSize:[64,54], iconAnchor:[20,20],
+  });
+}
 
 /* ══════════════════════════════════════════
  *  LOGIN
  * ══════════════════════════════════════════ */
-function doLogin(){
-  if(document.getElementById('login-user').value==='admin' &&
-     document.getElementById('login-pass').value==='nexus123'){
-    state.isAdmin=true;
-    document.getElementById('login-overlay').style.display='none';
-    log('Admin authenticated. Full access granted.','ok');
-    log('NEXUS RESCUE initialized. 7 nodes, 9 edges.','info');
-    setAdminAccess(true);
+function doLogin() {
+  if (document.getElementById('lu').value==='admin' && document.getElementById('lp').value==='nexus123') {
+    S.isAdmin = true;
+    document.getElementById('login-overlay').style.display  = 'none';
+    document.getElementById('admin-sidebar').style.display  = 'flex';
+    document.getElementById('public-sidebar').style.display = 'none';
+    document.getElementById('role-badge').textContent = 'ADMIN';
+    document.getElementById('role-badge').className   = 'role-badge admin';
+    setMode('disaster');
+    log('Admin authenticated.','ok');
   } else {
-    document.getElementById('login-err').style.display='block';
+    document.getElementById('lerr').style.display='block';
   }
 }
-function publicView(){
-  state.isAdmin=false;
-  document.getElementById('login-overlay').style.display='none';
-  switchView('public');
-  log('Public view mode. Read-only access.','warn');
+function enterPublic() {
+  S.isAdmin = false;
+  document.getElementById('login-overlay').style.display  = 'none';
+  document.getElementById('admin-sidebar').style.display  = 'none';
+  document.getElementById('public-sidebar').style.display = 'flex';
+  document.getElementById('role-badge').textContent = 'PUBLIC';
+  document.getElementById('role-badge').className   = 'role-badge public';
+  setHint('👁 Public view — click a team marker for details', false);
 }
-document.getElementById('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-
-function setAdminAccess(on){
-  ['hazard-card','victim-card','rescue-card'].forEach(id=>{
-    const el=document.getElementById(id);
-    el.style.opacity=on?'1':'0.3';
-    el.style.pointerEvents=on?'all':'none';
-  });
-}
-
-function switchView(v){
-  document.getElementById('btn-admin').classList.toggle('active',v==='admin');
-  document.getElementById('btn-public').classList.toggle('active',v==='public');
-  setAdminAccess(v==='admin' && state.isAdmin);
-}
+document.getElementById('lp').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
 
 /* ══════════════════════════════════════════
- *  TABS
+ *  TABS / MODE / PRIORITY
  * ══════════════════════════════════════════ */
-function openTab(id){
-  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+function openTab(id) {
+  document.querySelectorAll('.tcontent').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const idx=['tab-control','tab-teams','tab-map','tab-log'].indexOf(id);
-  document.querySelectorAll('.tab')[idx].classList.add('active');
+  ['tc','tt','tl'].forEach((t,i)=>{ if(t===id) document.querySelectorAll('.stab')[i].classList.add('active'); });
+}
+function setMode(m) {
+  S.mode = m;
+  if (m!=='block' && S.blkMark) { map.removeLayer(S.blkMark); S.blkMark=null; S.blkPt1=null; }
+  ['team','disaster','block'].forEach(x => {
+    document.getElementById(`mbtn-${x}`).className = 'mbtn' + (m===x ? ` ${x}-mode` : '');
+  });
+  const hints={team:'🚁 Click map to place a rescue team',disaster:'🔴 Click map to set disaster location',block:'🚧 Click Point 1 of road segment to block'};
+  setHint(hints[m], true);
+}
+function selectPriority(p) {
+  S.priority=p;
+  document.querySelectorAll('.pbtn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.pbtn[data-p="${p}"]`).classList.add('active');
+}
+function setHint(msg, isAdmin) {
+  const el = document.getElementById('hint-bar');
+  el.textContent = msg;
+  el.style.borderColor = isAdmin ? 'var(--accent)' : 'var(--dim)';
+  el.style.color        = isAdmin ? 'var(--accent)' : 'var(--dim)';
+}
+function showHint(msg) {
+  document.getElementById('hint-bar').textContent = msg;
+  setTimeout(()=>{ if(S.isAdmin) setMode(S.mode); else setHint('👁 Public view — click a team marker for details',false); }, 4000);
 }
 
 /* ══════════════════════════════════════════
- *  LOGGING
+ *  LOG
  * ══════════════════════════════════════════ */
-function log(msg,type='info'){
-  const el=document.getElementById('sys-log');
-  const now=new Date();
+function log(msg,type='info') {
+  const el=document.getElementById('sys-log'), now=new Date();
   const ts=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-  const entry=document.createElement('div');
-  entry.className=`log-entry ${type}`;
-  entry.textContent=`[${ts}] ${msg}`;
-  el.prepend(entry);
+  const d=document.createElement('div'); d.className=`le ${type}`; d.textContent=`[${ts}] ${msg}`; el.prepend(d);
 }
-function clearLog(){document.getElementById('sys-log').innerHTML='';}
 
 /* ══════════════════════════════════════════
- *  GRAPH HELPERS
+ *  FIREBASE — TEAMS
  * ══════════════════════════════════════════ */
-function isBlocked(a,b){return state.blocked[`${a}-${b}`]||state.blocked[`${b}-${a}`];}
-
-function getNeighbors(id){
-  return EDGES
-    .filter(e=>(e[0]===id||e[1]===id)&&!isBlocked(e[0],e[1]))
-    .map(e=>({id:e[0]===id?e[1]:e[0],w:e[2]}));
+async function fbAddTeam(lat, lng) {
+  const id    = 'team_' + Date.now();
+  const color = TEAM_COLORS[Object.keys(S.fbTeams).length % TEAM_COLORS.length];
+  const name  = `Team ${Object.keys(S.fbTeams).length + 1}`;
+  await window._db.setTeam(id, {id, name, lat, lng, color, available:true});
+  log(`${name} deployed.`,'ok');
 }
 
-/* DIJKSTRA */
-function dijkstra(src){
-  const dist=new Array(NODES.length).fill(Infinity);
-  const prev=new Array(NODES.length).fill(-1);
-  dist[src]=0;
-  const visited=new Set();
-  const pq=[[0,src]];
-  while(pq.length){
-    pq.sort((a,b)=>a[0]-b[0]);
-    const[d,u]=pq.shift();
-    if(visited.has(u))continue;
-    visited.add(u);
-    for(const{id:v,w}of getNeighbors(u)){
-      if(!visited.has(v)&&d+w<dist[v]){
-        dist[v]=d+w;prev[v]=u;pq.push([dist[v],v]);
+function renderTeams(data) {
+  S.fbTeams = data || {};
+
+  // Remove markers not in DB
+  Object.keys(S.teamMarkers).forEach(id => {
+    if (!S.fbTeams[id]) { map.removeLayer(S.teamMarkers[id].marker); delete S.teamMarkers[id]; }
+  });
+
+  // Add/update markers
+  Object.values(S.fbTeams).forEach(t => {
+    const onMission = t.available === false;
+    if (!S.teamMarkers[t.id]) {
+      const marker = L.marker([t.lat, t.lng], {
+        icon: teamIcon(t.color, t.name, onMission),
+        draggable: S.isAdmin,
+      }).addTo(map);
+      marker.on('click', () => showTeamPopup(t.id));
+      marker.on('dragend', async () => {
+        const p = marker.getLatLng();
+        await window._db.setTeam(t.id, {...S.fbTeams[t.id], lat:p.lat, lng:p.lng});
+        log(`${t.name} moved.`,'warn');
+      });
+      S.teamMarkers[t.id] = {marker, color:t.color};
+    } else {
+      S.teamMarkers[t.id].marker.setIcon(teamIcon(t.color, t.name, onMission));
+      S.teamMarkers[t.id].marker.dragging[S.isAdmin ? 'enable' : 'disable']();
+    }
+  });
+
+  updateAllUI();
+}
+
+async function fbRenameTeam(id, newName) {
+  const t = S.fbTeams[id]; if(!t) return;
+  const old = t.name;
+  await window._db.setTeam(id, {...t, name:newName});
+  log(`Renamed: "${old}" → "${newName}"`,'ok');
+}
+async function fbDeleteTeam(id) {
+  const t = S.fbTeams[id]; if(!t) return;
+  // Free disasters assigned to this team
+  for (const d of Object.values(S.fbDisasters)) {
+    if (d.assignedTeam===id) await window._db.setDisaster(d.id, {...d, assignedTeam:null});
+  }
+  await window._db.removeTeam(id);
+  log(`${t.name} removed.`,'warn');
+}
+
+/* ══════════════════════════════════════════
+ *  FIREBASE — DISASTERS
+ * ══════════════════════════════════════════ */
+async function fbAddDisaster(lat, lng) {
+  const id  = 'dis_' + Date.now();
+  const p   = S.priority;
+  const cfg = PRIORITY[p];
+
+  await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:null, route:null});
+  log(`${cfg.icon} [${cfg.label}] Disaster placed`,'alert');
+  showHint('⏳ Computing route...');
+
+  // Find best available team
+  const teams    = Object.values(S.fbTeams);
+  const pool     = teams.filter(t=>t.available!==false);
+  const toCheck  = pool.length>0 ? pool : teams;
+
+  let best=null, bestDist=Infinity, bestRoute=null;
+  for (const t of toCheck) {
+    const r = await fetchRoute(t.lat, t.lng, lat, lng);
+    if (r && r.distance<bestDist) { bestDist=r.distance; best=t; bestRoute=r; }
+  }
+
+  if (!bestRoute) { log('No route found!','alert'); showHint('❌ No route found.'); return; }
+
+  const km  = (bestDist/1000).toFixed(2);
+  const min = Math.round(bestRoute.duration/60);
+
+  // Save route coords + assignment to Firebase
+  await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:best.id, route:{coords:bestRoute.coords, km, min}});
+  await window._db.setTeam(best.id, {...S.fbTeams[best.id], available:false});
+
+  log(`${best.name} → Disaster | ${km}km | ~${min}min`,'ok');
+  showHint(`✓ ${best.name} → ${km}km | ~${min}min`);
+}
+
+function renderDisasters(data) {
+  S.fbDisasters = data || {};
+
+  // Remove markers not in DB
+  Object.keys(S.disMarkers).forEach(id => {
+    if (!S.fbDisasters[id]) {
+      map.removeLayer(S.disMarkers[id].marker);
+      removeLayers(S.disMarkers[id].routeLayers);
+      delete S.disMarkers[id];
+    }
+  });
+
+  // Add/update
+  Object.values(S.fbDisasters).forEach(d => {
+    if (!S.disMarkers[d.id]) {
+      const marker = L.marker([d.lat,d.lng], {icon:disasterIcon(d.priority)}).addTo(map);
+      const routeLayers = d.route ? drawRoute(d.route.coords) : [];
+      S.disMarkers[d.id] = {marker, routeLayers};
+    } else {
+      S.disMarkers[d.id].marker.setIcon(disasterIcon(d.priority));
+      // If route appeared (newly assigned), draw it
+      if (d.route && S.disMarkers[d.id].routeLayers.length===0) {
+        S.disMarkers[d.id].routeLayers = drawRoute(d.route.coords);
       }
     }
+  });
+
+  updateAllUI();
+}
+
+async function fbClearDisaster(id) {
+  const d = S.fbDisasters[id]; if(!d) return;
+  if (d.assignedTeam) await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
+  await window._db.removeDisaster(id);
+  log(`Disaster cleared. Team released.`,'ok');
+}
+async function clearAllDisasters() {
+  for (const d of Object.values(S.fbDisasters)) await fbClearDisaster(d.id);
+}
+async function clearAllRoutes() {
+  for (const d of Object.values(S.fbDisasters)) {
+    if (d.assignedTeam) await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
+    await window._db.setDisaster(d.id, {...d, assignedTeam:null, route:null});
+    if (S.disMarkers[d.id]) { removeLayers(S.disMarkers[d.id].routeLayers); S.disMarkers[d.id].routeLayers=[]; }
   }
-  return{dist,prev};
+  log('All routes cleared.','warn');
 }
 
-function getPath(prev,dest){
-  const path=[];let cur=dest;
-  while(cur!==-1){path.unshift(cur);cur=prev[cur];}
-  return path;
+/* ══════════════════════════════════════════
+ *  FIREBASE — BLOCKS
+ * ══════════════════════════════════════════ */
+function handleBlock(lat, lng) {
+  if (!S.blkPt1) {
+    S.blkPt1  = {lat,lng};
+    S.blkMark = L.circleMarker([lat,lng],{radius:8,color:'#ffaa00',fillColor:'#ffaa00',fillOpacity:.8,weight:2}).addTo(map);
+    setHint('🚧 Now click Point 2 to complete the block', true);
+  } else {
+    const p1=S.blkPt1, p2={lat,lng};
+    map.removeLayer(S.blkMark); S.blkMark=null; S.blkPt1=null;
+    const id='blk_'+Date.now();
+    window._db.setBlock(id, {id, p1, p2});
+    log(`🚧 Road blocked`,'alert');
+    setTimeout(()=>setMode('block'), 800);
+  }
 }
 
-/* BFS HAZARD */
-function bfsHazard(origin,maxLevel){
-  const visited=new Set();
-  const level=new Array(NODES.length).fill(-1);
-  const queue=[origin];
-  visited.add(origin);level[origin]=0;
-  const order=[];
-  while(queue.length){
-    const cur=queue.shift();
-    if(level[cur]>maxLevel)continue;
-    order.push({id:cur,lv:level[cur]});
-    EDGES.forEach(e=>{
-      let nb=-1;
-      if(e[0]===cur)nb=e[1];
-      if(e[1]===cur)nb=e[0];
-      if(nb>=0&&!visited.has(nb)){
-        visited.add(nb);level[nb]=level[cur]+1;queue.push(nb);
-      }
+function renderBlocks(data) {
+  S.fbBlocks = data || {};
+
+  Object.keys(S.blockLayers).forEach(id => {
+    if (!S.fbBlocks[id]) {
+      const b=S.blockLayers[id];
+      map.removeLayer(b.line); map.removeLayer(b.m1); map.removeLayer(b.m2);
+      delete S.blockLayers[id];
+    }
+  });
+
+  Object.values(S.fbBlocks).forEach(b => {
+    if (!S.blockLayers[b.id]) {
+      const line = L.polyline([[b.p1.lat,b.p1.lng],[b.p2.lat,b.p2.lng]],{color:'#ff3b3b',weight:5,opacity:.85,dashArray:'10,8',lineCap:'round'}).addTo(map);
+      const m1   = L.circleMarker([b.p1.lat,b.p1.lng],{radius:6,color:'#ff3b3b',fillColor:'#ff3b3b',fillOpacity:1,weight:2}).addTo(map);
+      const m2   = L.circleMarker([b.p2.lat,b.p2.lng],{radius:6,color:'#ff3b3b',fillColor:'#ff3b3b',fillOpacity:1,weight:2}).addTo(map);
+      S.blockLayers[b.id] = {line,m1,m2};
+    }
+  });
+
+  updateAllUI();
+}
+
+async function fbClearBlock(id) {
+  await window._db.removeBlock(id);
+  log('Road block removed.','ok');
+}
+async function clearAllBlocks() {
+  for (const id of Object.keys(S.fbBlocks)) await window._db.removeBlock(id);
+}
+
+/* ══════════════════════════════════════════
+ *  RESET ALL
+ * ══════════════════════════════════════════ */
+async function resetAll() {
+  await clearAllDisasters();
+  await clearAllBlocks();
+  // Remove all teams and re-add initial 4
+  for (const id of Object.keys(S.fbTeams)) await window._db.removeTeam(id);
+  for (let i=0; i<INITIAL_TEAMS.length; i++) {
+    const t = INITIAL_TEAMS[i];
+    await window._db.setTeam(t.id, {...t, color:TEAM_COLORS[i], available:true});
+  }
+  log('Reset complete.','ok');
+}
+
+/* ══════════════════════════════════════════
+ *  ORS FETCH
+ * ══════════════════════════════════════════ */
+async function fetchRoute(fLat,fLng,tLat,tLng) {
+  const body = {coordinates:[[fLng,fLat],[tLng,tLat]], instructions:false};
+  const blocks = Object.values(S.fbBlocks);
+  if (blocks.length>0) {
+    const polys = blocks.map(b => {
+      const off=0.0003, dLat=b.p2.lat-b.p1.lat, dLng=b.p2.lng-b.p1.lng;
+      const len=Math.sqrt(dLat*dLat+dLng*dLng)||1;
+      const nx=(-dLng/len)*off, ny=(dLat/len)*off;
+      return [[[b.p1.lng+nx,b.p1.lat+ny],[b.p2.lng+nx,b.p2.lat+ny],[b.p2.lng-nx,b.p2.lat-ny],[b.p1.lng-nx,b.p1.lat-ny],[b.p1.lng+nx,b.p1.lat+ny]]];
     });
+    body.options={avoid_polygons:{type:'MultiPolygon',coordinates:polys}};
   }
-  return order;
+  try {
+    const res=await fetch(ORS_URL,{method:'POST',headers:{'Authorization':ORS_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!res.ok) return null;
+    const data=await res.json();
+    if(!data.features?.length) return null;
+    const f=data.features[0];
+    return {distance:f.properties.summary.distance, duration:f.properties.summary.duration, coords:f.geometry.coordinates.map(c=>[c[1],c[0]])};
+  } catch(e){return null;}
 }
 
 /* ══════════════════════════════════════════
- *  GREEDY TEAM ASSIGNMENT (from C Module 4)
+ *  DRAW ROUTE
  * ══════════════════════════════════════════ */
-async function runGreedyAssignment(){
-  if(!state.isAdmin)return;
-  const unrescued=state.victims.filter(v=>!v.rescued);
-  if(unrescued.length===0){log('No victims to rescue!','warn');return;}
+function drawRoute(coords) {
+  if (!coords || !coords.length) return [];
+  const shadow = L.polyline(coords,{color:'#000',weight:9,opacity:0.25}).addTo(map);
+  const line   = L.polyline(coords,{color:'#1a73e8',weight:5,opacity:0.9,lineJoin:'round',lineCap:'round'}).addTo(map);
+  const dash   = L.polyline(coords,{color:'#fff',weight:2,opacity:0.45,dashArray:'8,16',dashOffset:'0'}).addTo(map);
+  let offset=0;
+  const anim = setInterval(()=>{ offset=(offset-1)%24; dash.setStyle({dashOffset:String(offset)}); },50);
+  S.animTimers.push(anim);
+  return [shadow,line,dash,{_anim:anim}];
+}
+function removeLayers(layers=[]) {
+  layers.forEach(r=>{ if(r._anim){clearInterval(r._anim); S.animTimers=S.animTimers.filter(t=>t!==r._anim);} else{try{map.removeLayer(r);}catch(e){}} });
+}
 
-  log('Starting greedy team assignment...','info');
-  let rescued=0,stranded=0;
+/* ══════════════════════════════════════════
+ *  TEAM POPUP
+ * ══════════════════════════════════════════ */
+function showTeamPopup(tid) {
+  const t   = S.fbTeams[tid]; if(!t) return;
+  const on  = t.available===false;
+  const dis = on ? Object.values(S.fbDisasters).find(d=>d.assignedTeam===tid) : null;
+  const cfg = dis ? PRIORITY[dis.priority] : null;
 
-  for(const victim of unrescued){
-    let bestTeam=null,bestDist=Infinity,bestPath=[];
-
-    // Find nearest available team — GREEDY STEP
-    for(const team of state.teams){
-      if(!team.available)continue;
-      const{dist,prev}=dijkstra(team.location);
-      const d=dist[victim.location];
-      if(d<bestDist){
-        bestDist=d;bestTeam=team;
-        bestPath=getPath(prev,victim.location);
-      }
-    }
-
-    if(!bestTeam||bestDist===Infinity){
-      log(`[X] No route to Victim #${victim.id} at ${NODES[victim.location].name}!`,'alert');
-      stranded++;
-      continue;
-    }
-
-    // Assign
-    bestTeam.available=false;
-    victim.rescued=true;
-    victim.assignedTeam=bestTeam.id;
-
-    log(`[✓] ${bestTeam.name} → Victim #${victim.id} @ ${NODES[victim.location].name} (cost: ${bestDist})`,'ok');
-    log(`    Route: ${bestPath.map(id=>NODES[id].name).join(' → ')}`,'info');
-
-    await animateRoute(bestPath, bestTeam.color);
-    rescued++;
-    updateStats();
-    updateTeamList();
+  let html=`<div style="font-family:'Share Tech Mono',monospace;font-size:11px;line-height:1.9;">
+    <div style="color:${t.color};font-weight:700;font-size:12px;margin-bottom:4px;">🚁 ${t.name}</div>`;
+  if (on && dis) {
+    html+=`<div style="color:var(--warning);">◉ ON MISSION</div>
+    <div>Target &nbsp;: ${cfg.icon} Disaster</div>
+    <div>Priority : <span style="color:${cfg.color};">${cfg.label}</span></div>
+    ${dis.route ? `<div>Dist &nbsp;&nbsp;&nbsp;: <b style="color:#fff;">${dis.route.km} km</b></div><div>ETA &nbsp;&nbsp;&nbsp;&nbsp;: <b style="color:#fff;">~${dis.route.min} min</b></div>` : ''}`;
+  } else {
+    html+=`<div style="color:var(--safe);">◉ READY — awaiting deployment</div>`;
   }
-
-  log(`Mission complete. Rescued: ${rescued} | Stranded: ${stranded}`, rescued>0?'ok':'alert');
-}
-
-async function runManualRescue(){
-  if(!state.isAdmin)return;
-  const tid=parseInt(document.getElementById('manual-team').value);
-  const vid=parseInt(document.getElementById('manual-victim').value);
-  if(isNaN(tid)||isNaN(vid)){log('Select team and victim!','warn');return;}
-
-  const team=state.teams.find(t=>t.id===tid);
-  const victim=state.victims.find(v=>v.id===vid);
-  if(!team||!victim){log('Invalid selection','alert');return;}
-  if(!team.available){log(`${team.name} is already on mission!`,'warn');return;}
-  if(victim.rescued){log(`Victim #${victim.id} already rescued!`,'warn');return;}
-
-  const{dist,prev}=dijkstra(team.location);
-  const d=dist[victim.location];
-  if(d===Infinity){log(`No route from ${team.name} to Victim #${victim.id}!`,'alert');return;}
-
-  const path=getPath(prev,victim.location);
-  team.available=false;
-  victim.rescued=true;
-  victim.assignedTeam=team.id;
-
-  log(`[✓] ${team.name} → Victim #${victim.id} @ ${NODES[victim.location].name} (cost: ${d})`,'ok');
-  await animateRoute(path,team.color);
-  updateStats();
-  updateTeamList();
-}
-
-/* ══════════════════════════════════════════
- *  HAZARD
- * ══════════════════════════════════════════ */
-async function triggerHazard(){
-  if(!state.isAdmin)return;
-  const origin=parseInt(document.getElementById('hazard-origin').value);
-  const level=parseInt(document.getElementById('hazard-level').value);
-  if(isNaN(origin)){log('Select disaster origin!','alert');return;}
-
-  log(`⚠ DISASTER at ${NODES[origin].name} (spread level: ${level})`,'alert');
-  const spread=bfsHazard(origin,level);
-
-  for(const{id,lv}of spread){
-    await delay(380);
-    state.hazardLevel[id]=lv===0?2:Math.min(2,lv);
-    EDGES.forEach(([a,b])=>{
-      if(a===id||b===id){
-        state.blocked[`${a}-${b}`]=true;
-        state.blocked[`${b}-${a}`]=true;
-      }
-    });
-    log(`${NODES[id].name} — ${lv===0?'EPICENTER':lv===1?'DANGER':'WARNING'}`,lv<=1?'alert':'warn');
-    renderMap();
-    animateHazardRing(id);
-  }
-  updateStats();
-}
-
-/* ══════════════════════════════════════════
- *  VICTIM MANAGEMENT
- * ══════════════════════════════════════════ */
-function addVictim(){
-  if(!state.isAdmin)return;
-  const loc=parseInt(document.getElementById('victim-loc').value);
-  if(isNaN(loc)){log('Select victim location!','alert');return;}
-
-  state.victimCounter++;
-  const victim={id:state.victimCounter,location:loc,rescued:false,assignedTeam:null};
-  state.victims.push(victim);
-  log(`Victim #${victim.id} added at ${NODES[loc].name}`,'warn');
-  renderMap();
-  updateTeamList();
-  updateStats();
-  populateManualSelects();
-}
-
-/* ══════════════════════════════════════════
- *  RENDER
- * ══════════════════════════════════════════ */
-function lp(lat,lng){return map.latLngToContainerPoint([lat,lng]);}
-
-function renderMap(){
-  const mapEl=document.getElementById('map');
-  svg.setAttribute('width',mapEl.offsetWidth);
-  svg.setAttribute('height',mapEl.offsetHeight);
-
-  // Keep route elements, clear rest
-  const keep=Array.from(svg.children).filter(el=>el.dataset.keep==='1');
-  svg.innerHTML='';
-  keep.forEach(el=>svg.appendChild(el));
-
-  // Edges
-  EDGES.forEach(([a,b,w])=>{
-    const pa=lp(NODES[a].lat,NODES[a].lng);
-    const pb=lp(NODES[b].lat,NODES[b].lng);
-    const blocked=isBlocked(a,b);
-    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1',pa.x);line.setAttribute('y1',pa.y);
-    line.setAttribute('x2',pb.x);line.setAttribute('y2',pb.y);
-    line.setAttribute('stroke',blocked?'rgba(255,59,59,0.5)':'rgba(0,229,255,0.22)');
-    line.setAttribute('stroke-width','2');
-    line.setAttribute('stroke-dasharray',blocked?'6,4':'');
-    svg.appendChild(line);
-
-    // Weight
-    const mx=(pa.x+pb.x)/2,my=(pa.y+pb.y)/2;
-    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x',mx);t.setAttribute('y',my-5);
-    t.setAttribute('text-anchor','middle');
-    t.setAttribute('fill','rgba(0,229,255,0.45)');
-    t.setAttribute('font-size','10');
-    t.setAttribute('font-family','Share Tech Mono,monospace');
-    t.textContent=w;
-    svg.appendChild(t);
-  });
-
-  // Nodes
-  NODES.forEach(n=>{
-    const p=lp(n.lat,n.lng);
-    const lv=state.hazardLevel[n.id];
-    const color=lv===0?'var(--safe)':lv===1?'var(--warning)':'var(--danger)';
-
-    // Ring
-    const ring=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    ring.setAttribute('cx',p.x);ring.setAttribute('cy',p.y);ring.setAttribute('r','18');
-    ring.setAttribute('fill','none');ring.setAttribute('stroke',color);
-    ring.setAttribute('stroke-width','1');ring.setAttribute('opacity','0.25');
-    svg.appendChild(ring);
-
-    // Circle
-    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r','10');
-    c.setAttribute('fill',lv===0?'rgba(0,255,136,0.12)':lv===1?'rgba(255,170,0,0.18)':'rgba(255,59,59,0.18)');
-    c.setAttribute('stroke',color);c.setAttribute('stroke-width','2');
-    c.style.filter=`drop-shadow(0 0 6px ${color})`;
-    svg.appendChild(c);
-
-    // Label
-    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
-    lbl.setAttribute('x',p.x);lbl.setAttribute('y',p.y+26);
-    lbl.setAttribute('text-anchor','middle');lbl.setAttribute('fill',color);
-    lbl.setAttribute('font-size','11');lbl.setAttribute('font-family','Rajdhani,sans-serif');
-    lbl.setAttribute('font-weight','700');lbl.setAttribute('letter-spacing','1');
-    lbl.textContent=n.name.toUpperCase();
-    svg.appendChild(lbl);
-  });
-
-  // Team markers
-  state.teams.forEach(team=>{
-    const n=NODES[team.location];
-    const p=lp(n.lat,n.lng);
-    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x',p.x+14);t.setAttribute('y',p.y-14);
-    t.setAttribute('fill',team.color);t.setAttribute('font-size','14');
-    t.style.filter=`drop-shadow(0 0 5px ${team.color})`;
-    t.textContent=team.available?'🚁':'✈';
-    svg.appendChild(t);
-  });
-
-  // Victim markers
-  state.victims.forEach(v=>{
-    if(v.rescued)return;
-    const n=NODES[v.location];
-    const p=lp(n.lat,n.lng);
-    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x',p.x-14);t.setAttribute('y',p.y-14);
-    t.setAttribute('fill','var(--danger)');t.setAttribute('font-size','14');
-    t.style.filter='drop-shadow(0 0 5px var(--danger))';
-    t.textContent='🆘';
-    svg.appendChild(t);
-
-    const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
-    lbl.setAttribute('x',p.x-14);lbl.setAttribute('y',p.y-28);
-    lbl.setAttribute('text-anchor','middle');lbl.setAttribute('fill','var(--danger)');
-    lbl.setAttribute('font-size','9');lbl.setAttribute('font-family','Share Tech Mono,monospace');
-    lbl.textContent=`V#${v.id}`;
-    svg.appendChild(lbl);
-  });
-
-  updateNodeList();
-}
-
-/* ══════════════════════════════════════════
- *  ANIMATIONS
- * ══════════════════════════════════════════ */
-async function animateRoute(path,color='#00e5ff'){
-  for(let i=0;i<path.length-1;i++){
-    await delay(480);
-    const a=path[i],b=path[i+1];
-    const pa=lp(NODES[a].lat,NODES[a].lng);
-    const pb=lp(NODES[b].lat,NODES[b].lng);
-
-    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1',pa.x);line.setAttribute('y1',pa.y);
-    line.setAttribute('x2',pb.x);line.setAttribute('y2',pb.y);
-    line.setAttribute('stroke',color);line.setAttribute('stroke-width','4');
-    line.setAttribute('stroke-linecap','round');
-    line.classList.add('route-line');
-    line.style.filter=`drop-shadow(0 0 8px ${color})`;
-    line.dataset.keep='1';
-    svg.appendChild(line);
-
-    const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    dot.setAttribute('cx',pa.x);dot.setAttribute('cy',pa.y);dot.setAttribute('r','5');
-    dot.setAttribute('fill',color);dot.style.filter=`drop-shadow(0 0 8px ${color})`;
-    svg.appendChild(dot);
-    await animateDot(dot,pa,pb);
-    svg.removeChild(dot);
-  }
-
-  // Rescued checkmark
-  const dest=path[path.length-1];
-  const pd=lp(NODES[dest].lat,NODES[dest].lng);
-  const check=document.createElementNS('http://www.w3.org/2000/svg','text');
-  check.setAttribute('x',pd.x);check.setAttribute('y',pd.y-20);
-  check.setAttribute('text-anchor','middle');check.setAttribute('fill','var(--safe)');
-  check.setAttribute('font-size','20');check.setAttribute('font-family','Rajdhani,sans-serif');
-  check.style.filter='drop-shadow(0 0 6px var(--safe))';
-  check.textContent='✓';
-  check.dataset.keep='1';
-  svg.appendChild(check);
-}
-
-function animateDot(dot,from,to){
-  return new Promise(res=>{
-    let t=0;
-    const anim=setInterval(()=>{
-      t+=0.05;
-      dot.setAttribute('cx',from.x+(to.x-from.x)*t);
-      dot.setAttribute('cy',from.y+(to.y-from.y)*t);
-      if(t>=1){clearInterval(anim);res();}
-    },25);
-  });
-}
-
-function animateHazardRing(nodeId){
-  const p=lp(NODES[nodeId].lat,NODES[nodeId].lng);
-  const ring=document.createElementNS('http://www.w3.org/2000/svg','circle');
-  ring.setAttribute('cx',p.x);ring.setAttribute('cy',p.y);ring.setAttribute('r','10');
-  ring.setAttribute('fill','none');ring.setAttribute('stroke','var(--danger)');
-  ring.setAttribute('stroke-width','2');ring.setAttribute('opacity','0.9');
-  svg.appendChild(ring);
-  let r=10,op=0.9;
-  const anim=setInterval(()=>{
-    r+=3;op-=0.07;
-    ring.setAttribute('r',r);ring.setAttribute('opacity',op);
-    if(op<=0){clearInterval(anim);if(ring.parentNode)svg.removeChild(ring);}
-  },35);
+  html+=`</div>`;
+  L.popup({className:'nexus-popup',maxWidth:220}).setLatLng([t.lat,t.lng]).setContent(html).openOn(map);
 }
 
 /* ══════════════════════════════════════════
  *  UI UPDATES
  * ══════════════════════════════════════════ */
-function updateStats(){
-  const safe=state.hazardLevel.filter(l=>l===0).length;
-  const danger=state.hazardLevel.filter(l=>l>0).length;
-  const rescued=state.victims.filter(v=>v.rescued).length;
-  const stranded=state.victims.filter(v=>!v.rescued).length;
-  document.getElementById('s-safe').textContent=safe;
-  document.getElementById('s-danger').textContent=danger;
-  document.getElementById('s-rescued').textContent=rescued;
-  document.getElementById('s-stranded').textContent=stranded;
+function updateAllUI() {
+  const teams     = Object.values(S.fbTeams);
+  const disasters = Object.values(S.fbDisasters);
+  const blocks    = Object.values(S.fbBlocks);
+  const routes    = disasters.filter(d=>d.route).length;
 
-  const dot=document.getElementById('sys-dot');
-  const status=document.getElementById('sys-status');
-  if(danger>0){
-    dot.className='pulse-dot alert';
-    status.textContent=`DISASTER ACTIVE — ${danger} ZONES`;
-    status.style.color='var(--danger)';
-  } else {
-    dot.className='pulse-dot';
-    status.textContent='SYSTEM NOMINAL';
-    status.style.color='var(--dim)';
-  }
-}
+  // Header stats
+  ['s-teams','ps-teams'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=teams.length; });
+  ['s-disasters','ps-disasters'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=disasters.length; });
+  ['s-routes','ps-routes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=routes; });
 
-function updateTeamList(){
+  // System status
+  const dot=document.getElementById('sys-dot'), st=document.getElementById('sys-status');
+  if (disasters.length>0) { dot.className='pulse red'; st.textContent='DISASTER ACTIVE'; st.style.color='var(--danger)'; }
+  else                     { dot.className='pulse';     st.textContent='SYSTEM NOMINAL';  st.style.color='var(--dim)'; }
+
+  // Admin team list
   const tl=document.getElementById('team-list');
-  tl.innerHTML='';
-  state.teams.forEach(team=>{
-    tl.innerHTML+=`
-    <div class="team-item">
-      <div class="team-dot" style="background:${team.color};box-shadow:0 0 6px ${team.color};"></div>
-      <span>${team.name}</span>
-      <span style="font-size:11px;color:var(--dim);">@ ${NODES[team.location].name}</span>
-      <span class="team-badge" style="background:${team.available?'rgba(0,255,136,0.12)':'rgba(255,170,0,0.12)'};color:${team.available?'var(--safe)':'var(--warning)'};">
-        ${team.available?'READY':'MISSION'}
-      </span>
-    </div>`;
-  });
-
-  const vl=document.getElementById('victim-list');
-  vl.innerHTML='';
-  if(state.victims.length===0){
-    vl.innerHTML='<div style="color:var(--dim);font-size:11px;font-family:Share Tech Mono,monospace;padding:8px;">No victims added yet.</div>';
-    return;
+  if (tl) {
+    if (!teams.length) { tl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;padding:8px;">No teams deployed.</div>'; }
+    else tl.innerHTML=teams.map(t=>{
+      const on=t.available===false;
+      return `<div class="list-item" id="ti-${t.id}">
+        <div class="dot" style="background:${t.color};box-shadow:0 0 6px ${t.color};"></div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;font-weight:700;" id="tn-${t.id}">${t.name}</div>
+          <div style="font-size:9px;color:var(--dim);font-family:'Share Tech Mono',monospace;">${Number(t.lat).toFixed(4)}, ${Number(t.lng).toFixed(4)}</div>
+        </div>
+        <span class="badge" style="background:${on?'rgba(255,170,0,0.12)':'rgba(0,255,136,0.12)'};color:${on?'var(--warning)':'var(--safe)'};">${on?'ON MISSION':'READY'}</span>
+        <button class="icon-btn" onclick="startRename('${t.id}')" title="Rename">✎</button>
+        <button class="icon-btn del" onclick="fbDeleteTeam('${t.id}')" title="Delete">✕</button>
+      </div>`;
+    }).join('');
   }
-  state.victims.forEach(v=>{
-    const team=v.assignedTeam?state.teams.find(t=>t.id===v.assignedTeam):null;
-    vl.innerHTML+=`
-    <div class="victim-item">
-      <span class="victim-icon">${v.rescued?'✓':'🆘'}</span>
-      <div>
-        <div style="font-size:12px;font-weight:700;">Victim #${v.id}</div>
-        <div style="font-size:10px;color:var(--dim);font-family:Share Tech Mono,monospace;">${NODES[v.location].name}</div>
-      </div>
-      <span class="team-badge" style="margin-left:auto;background:${v.rescued?'rgba(0,255,136,0.12)':'rgba(255,59,59,0.12)'};color:${v.rescued?'var(--safe)':'var(--danger)'};">
-        ${v.rescued?`RESCUED`:'WAITING'}
-      </span>
-    </div>`;
-  });
-}
 
-function updateNodeList(){
-  const el=document.getElementById('node-list');
-  el.innerHTML='';
-  NODES.forEach(n=>{
-    const lv=state.hazardLevel[n.id];
-    const cls=lv===0?'safe':lv===1?'warning':'danger';
-    const label=lv===0?'SAFE':lv===1?'WARNING':'DANGER';
-    el.innerHTML+=`
-    <div class="node-item">
-      <div class="node-dot ${cls}"></div>
-      <span>${n.name}</span>
-      <span class="node-badge ${cls}">${label}</span>
-    </div>`;
-  });
-}
+  // Admin disaster list
+  const dlc=document.getElementById('disaster-list-card'), dl=document.getElementById('disaster-list');
+  if (dlc && dl) {
+    if (!disasters.length) { dlc.style.display='none'; }
+    else {
+      dlc.style.display='';
+      const sorted=[...disasters].sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
+      dl.innerHTML=sorted.map(d=>{
+        const cfg=PRIORITY[d.priority];
+        const tn=d.assignedTeam?(S.fbTeams[d.assignedTeam]?.name||'—'):'Unassigned';
+        return `<div class="d-item">
+          <div class="d-info"><div class="d-name">${cfg.icon} Disaster</div><div class="d-sub">Team: ${tn}</div></div>
+          <span class="p-badge" style="background:${cfg.color}22;color:${cfg.color};border:1px solid ${cfg.color}55;">${cfg.label}</span>
+          <button class="d-clear" onclick="fbClearDisaster('${d.id}')">✕</button>
+        </div>`;
+      }).join('');
+    }
+  }
 
-function populateSelects(){
-  ['hazard-origin','victim-loc'].forEach(sid=>{
-    const sel=document.getElementById(sid);
-    sel.innerHTML='<option value="">— select —</option>';
-    NODES.forEach(n=>sel.innerHTML+=`<option value="${n.id}">${n.name}</option>`);
-  });
-}
+  // Admin block list
+  const blc=document.getElementById('blocked-card'), bll=document.getElementById('blocked-list');
+  if (blc && bll) {
+    if (!blocks.length) { blc.style.display='none'; }
+    else {
+      blc.style.display='';
+      bll.innerHTML=blocks.map(b=>`
+        <div class="b-item">
+          <div class="b-info">🚧 Road Block<br><span style="font-size:8px;opacity:.7;">(${Number(b.p1.lat).toFixed(3)},${Number(b.p1.lng).toFixed(3)}) → (${Number(b.p2.lat).toFixed(3)},${Number(b.p2.lng).toFixed(3)})</span></div>
+          <button class="b-clear" onclick="fbClearBlock('${b.id}')">✕</button>
+        </div>`).join('');
+    }
+  }
 
-function populateManualSelects(){
-  const ts=document.getElementById('manual-team');
-  ts.innerHTML='<option value="">— team —</option>';
-  state.teams.filter(t=>t.available).forEach(t=>
-    ts.innerHTML+=`<option value="${t.id}">${t.name}</option>`);
+  // Public team list
+  const ptl=document.getElementById('pub-team-list');
+  if (ptl) {
+    if (!teams.length) { ptl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;">No teams deployed.</div>'; }
+    else ptl.innerHTML=teams.map(t=>{
+      const on=t.available===false;
+      return `<div class="list-item" style="cursor:pointer;" onclick="showTeamPopup('${t.id}')">
+        <div class="dot" style="background:${t.color};box-shadow:0 0 6px ${t.color};"></div>
+        <div style="flex:1;"><div style="font-size:12px;font-weight:700;">${t.name}</div></div>
+        <span class="badge" style="background:${on?'rgba(255,170,0,0.12)':'rgba(0,255,136,0.12)'};color:${on?'var(--warning)':'var(--safe)'};">${on?'ON MISSION':'READY'}</span>
+      </div>`;
+    }).join('');
+  }
 
-  const vs=document.getElementById('manual-victim');
-  vs.innerHTML='<option value="">— victim —</option>';
-  state.victims.filter(v=>!v.rescued).forEach(v=>
-    vs.innerHTML+=`<option value="${v.id}">Victim #${v.id} @ ${NODES[v.location].name}</option>`);
-}
+  // Public disaster list
+  const pdl=document.getElementById('pub-disaster-list');
+  if (pdl) {
+    if (!disasters.length) { pdl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;">No active disasters.</div>'; }
+    else {
+      const sorted=[...disasters].sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
+      pdl.innerHTML=sorted.map(d=>{
+        const cfg=PRIORITY[d.priority];
+        const tn=d.assignedTeam?(S.fbTeams[d.assignedTeam]?.name||'—'):'Unassigned';
+        return `<div class="d-item">
+          <div class="d-info"><div class="d-name">${cfg.icon} Disaster</div><div class="d-sub">Team: ${tn}</div></div>
+          <span class="p-badge" style="background:${cfg.color}22;color:${cfg.color};border:1px solid ${cfg.color}55;">${cfg.label}</span>
+        </div>`;
+      }).join('');
+    }
+  }
 
-function resetMap(){
-  state.hazardLevel=new Array(7).fill(0);
-  state.blocked={};
-  state.victims=[];
-  state.victimCounter=0;
-  state.teams=TEAM_NAMES.map((name,i)=>({
-    id:i+1,name,location:TEAM_BASES[i],available:true,color:TEAM_COLORS[i]
-  }));
-  log('Map reset. All hazards cleared.','ok');
-  renderMap();
-  updateStats();
-  updateTeamList();
-  populateManualSelects();
+  // Public blocked roads
+  const pbc=document.getElementById('pub-blocked-card'), pbl=document.getElementById('pub-blocked-list');
+  if (pbc && pbl) {
+    pbc.style.display = blocks.length ? '' : 'none';
+    pbl.innerHTML = blocks.map(b=>`<div class="b-item"><div class="b-info">🚧 Road Block<br><span style="font-size:8px;opacity:.7;">(${Number(b.p1.lat).toFixed(3)},${Number(b.p1.lng).toFixed(3)}) → (${Number(b.p2.lat).toFixed(3)},${Number(b.p2.lng).toFixed(3)})</span></div></div>`).join('');
+  }
+
+  // Last route card
+  const rc=document.getElementById('route-card'), ri=document.getElementById('route-info');
+  if (rc && ri && disasters.length>0) {
+    const withRoute=disasters.filter(d=>d.route);
+    if (withRoute.length>0) {
+      const d=withRoute[withRoute.length-1];
+      const cfg=PRIORITY[d.priority], tn=d.assignedTeam?(S.fbTeams[d.assignedTeam]?.name||'—'):'—';
+      rc.style.display='';
+      ri.innerHTML=`<div style="color:#7bb8ff;margin-bottom:4px;">${cfg.icon} [${cfg.label}]</div>
+        <div>Team : <b style="color:#fff;">${tn}</b></div>
+        ${d.route?`<div>Dist : <b style="color:#fff;">${d.route.km} km</b></div><div>ETA &nbsp;: <b style="color:#fff;">~${d.route.min} min</b></div>`:''}`;
+    }
+  } else if (rc) rc.style.display='none';
 }
 
 /* ══════════════════════════════════════════
- *  UTILS
+ *  TEAM RENAME
  * ══════════════════════════════════════════ */
-function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+function startRename(id) {
+  const t=S.fbTeams[id]; if(!t) return;
+  const el=document.getElementById(`tn-${id}`); if(!el) return;
+  const old=t.name;
+  el.innerHTML=`<input class="name-input" id="ni-${id}" value="${old}" maxlength="20"/>`;
+  const inp=document.getElementById(`ni-${id}`); inp.focus(); inp.select();
+  const save=()=>{ const v=inp.value.trim(); if(v&&v!==old) fbRenameTeam(id,v); else updateAllUI(); };
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); if(e.key==='Escape') updateAllUI(); });
+  inp.addEventListener('blur', save);
+}
 
 /* ══════════════════════════════════════════
- *  INIT
+ *  FIREBASE INIT + WATCHERS
  * ══════════════════════════════════════════ */
-map.on('moveend zoomend',renderMap);
-window.addEventListener('resize',()=>{
-  svg.setAttribute('width',document.getElementById('map').offsetWidth);
-  svg.setAttribute('height',document.getElementById('map').offsetHeight);
-  renderMap();
+window.addEventListener('firebase-ready', async () => {
+  // Hide loading, show login
+  document.getElementById('loading-screen').style.display='none';
+  document.getElementById('login-overlay').style.display='flex';
+
+  // Update sync dot
+  document.getElementById('sync-dot').className   = 'sync-dot';
+  document.getElementById('sync-label').textContent = 'LIVE';
+
+  // Watch all collections — renders happen automatically on any change
+  window._db.watchTeams(renderTeams);
+  window._db.watchDisasters(renderDisasters);
+  window._db.watchBlocks(renderBlocks);
+
+  // Seed initial teams if DB is empty
+  setTimeout(async () => {
+    if (Object.keys(S.fbTeams).length===0) {
+      for (let i=0;i<INITIAL_TEAMS.length;i++) {
+        const t=INITIAL_TEAMS[i];
+        await window._db.setTeam(t.id, {...t, color:TEAM_COLORS[i], available:true});
+      }
+    }
+  }, 1500);
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape')resetMap();});
 
+// If Firebase takes too long
 setTimeout(()=>{
-  populateSelects();
-  populateManualSelects();
-  renderMap();
-  updateTeamList();
-  updateStats();
-},300);
+  if (document.getElementById('loading-screen').style.display!=='none') {
+    document.getElementById('loading-screen').style.display='none';
+    document.getElementById('login-overlay').style.display='flex';
+    document.getElementById('sync-dot').className='sync-dot off';
+    document.getElementById('sync-label').textContent='OFFLINE';
+  }
+}, 6000);
 </script>
 </body>
 </html>
