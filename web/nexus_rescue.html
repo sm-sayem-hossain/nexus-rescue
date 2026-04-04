@@ -595,10 +595,14 @@ async function fbAddDisaster(lat, lng) {
   S.fbDisasters[id] = {id, lat, lng, priority:p, assignedTeam:null, route:null};
   
   log(`${cfg.icon} [${cfg.label}] Logged to ${p==='emergency'?'Stack':'Priority Queue'}`,'alert');
-  showHint('☑ Location submitted. Assigning teams...');
+  showHint('☑ Logged. Processing in 3 seconds...');
   
-  processPendingDisasters();
-  updateAllUI();
+  updateAllUI(); // Visually push to Stack/Queue immediately so the teacher can see it
+  
+  // Delay popping from the stack for 3.5s to visually demonstrate Data Structure algorithms
+  setTimeout(() => {
+    processPendingDisasters();
+  }, 3500);
 }
 
 async function processPendingDisasters() {
