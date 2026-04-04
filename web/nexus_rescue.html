@@ -527,13 +527,13 @@ function log(msg,type='info') {
  *  FIREBASE — TEAMS
  * ══════════════════════════════════════════ */
 async function fbAddTeam(lat, lng) {
-  const id    = 'team_' + Date.now();
+  const id    = 'team_' + Date.now() + '_' + Math.floor(Math.random()*1000);
   const color = TEAM_COLORS[Object.keys(S.fbTeams).length % TEAM_COLORS.length];
   const name  = `Team ${Object.keys(S.fbTeams).length + 1}`;
   await window._db.setTeam(id, {id, name, lat, lng, color, available:true});
   log(`${name} deployed.`,'ok');
   S.fbTeams[id] = {id, name, lat, lng, color, available:true};
-  await processPendingDisasters();
+  updateAllUI();
 }
 
 function renderTeams(data) {
@@ -580,101 +580,24 @@ async function fbDeleteTeam(id) {
   await window._db.removeTeam(id);
   delete S.fbTeams[id];
   log(`${t.name} removed.`,'warn');
-  await processPendingDisasters();
+  updateAllUI();
 }
 
 /* ══════════════════════════════════════════
  *  FIREBASE — DISASTERS
  * ══════════════════════════════════════════ */
 async function fbAddDisaster(lat, lng) {
-  const id  = 'dis_' + Date.now();
+  const id  = 'dis_' + Date.now() + '_' + Math.floor(Math.random()*10000);
   const p   = S.priority;
   const cfg = PRIORITY[p];
 
   await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:null, route:null});
   S.fbDisasters[id] = {id, lat, lng, priority:p, assignedTeam:null, route:null};
   
-  log(`${cfg.icon} [${cfg.label}] Logged to ${p==='emergency'?'Stack':'Priority Queue'}`,'alert');
-  showHint('☑ Logged. Processing in 3 seconds...');
+  log(`${cfg.icon} [${cfg.label}] Pushed to ${p==='emergency'?'Stack':'Priority Queue'}`,'alert');
+  showHint(`☑ Added to ${p==='emergency'?'Stack':'Queue'}. Awaiting team assignment.`);
   
-  updateAllUI(); // Visually push to Stack/Queue immediately so the teacher can see it
-  
-  // Delay popping from the stack for 3.5s to visually demonstrate Data Structure algorithms
-  setTimeout(() => {
-    processPendingDisasters();
-  }, 3500);
-}
-
-async function processPendingDisasters() {
-  if (S.isRouting) return;
-  S.isRouting = true;
-  try {
-    let pending = Object.values(S.fbDisasters).filter(d => d.assignedTeam === null);
-    while (pending.length > 0) {
-      const emergencyStack = pending.filter(d => d.priority === 'emergency');
-      emergencyStack.sort((a,b) => b.id.localeCompare(a.id));
-
-      const restPQ = pending.filter(d => d.priority !== 'emergency');
-      restPQ.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order);
-
-      const orderToProcess = [...emergencyStack, ...restPQ];
-      let assignedAny = false;
-
-      for (const d of orderToProcess) {
-        const pool = Object.values(S.fbTeams).filter(t => t.available !== false);
-        if (!pool.length) break; 
-        
-        let best=null, bestDirectDist=Infinity;
-        // FAST HEURISTIC SEARCH (prevents API limits & loop failures)
-        for (const t of pool) {
-          const dx = t.lat - d.lat, dy = t.lng - d.lng;
-          const dist = Math.sqrt(dx*dx + dy*dy);
-          if (dist < bestDirectDist) { bestDirectDist = dist; best = t; }
-        }
-        
-        if (best) {
-          let bestRoute = await fetchRoute(best.lat, best.lng, d.lat, d.lng);
-          if (!bestRoute) {
-            // Straight-line fallback if API limits reached
-            const straightMeters = bestDirectDist * 111000;
-            bestRoute = {
-              distance: straightMeters,
-              duration: Math.round((straightMeters/1000) / 40 * 60) * 60,
-              coords: [[best.lat, best.lng], [d.lat, d.lng]]
-            };
-            log('API limit reached. Direct routing used.','warn');
-          }
-
-          const priorDisasters = Object.values(S.fbDisasters).filter(oldD => oldD.assignedTeam === best.id && oldD.id !== d.id);
-          for (const oldDis of priorDisasters) {
-            await window._db.setDisaster(oldDis.id, { ...oldDis, assignedTeam: null, route: null });
-            if (S.disMarkers[oldDis.id] && S.disMarkers[oldDis.id].routeLayers) {
-              removeLayers(S.disMarkers[oldDis.id].routeLayers);
-              S.disMarkers[oldDis.id].routeLayers = [];
-            }
-            oldDis.assignedTeam = null; oldDis.route = null;
-          }
-
-          const km  = (bestRoute.distance/1000).toFixed(2);
-          const min = Math.round(bestRoute.duration/60);
-          await window._db.setDisaster(d.id, {...d, assignedTeam:best.id, route:{coords:bestRoute.coords, km, min}});
-          await window._db.setTeam(best.id, {...S.fbTeams[best.id], available:false});
-          S.fbTeams[best.id].available = false;
-          S.fbDisasters[d.id].assignedTeam = best.id;
-          d.assignedTeam = best.id;
-          log(`${best.name} auto-assigned to disaster.`,'ok');
-          assignedAny = true;
-          break;
-        }
-      }
-      
-      if (!assignedAny) break; 
-      pending = Object.values(S.fbDisasters).filter(d => d.assignedTeam === null);
-    }
-  } finally {
-    S.isRouting = false;
-    updateAllUI();
-  }
+  updateAllUI(); // Visually push to Stack/Queue immediately
 }
 
 function renderDisasters(data) {
@@ -709,7 +632,7 @@ function renderDisasters(data) {
   updateAllUI();
 }
 
-async function fbClearDisaster(id, skipAutoAssign = false) {
+async function fbClearDisaster(id) {
   const d = S.fbDisasters[id]; if(!d) return;
   if (d.assignedTeam) {
     await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
@@ -718,10 +641,10 @@ async function fbClearDisaster(id, skipAutoAssign = false) {
   await window._db.removeDisaster(id);
   delete S.fbDisasters[id];
   log(`Disaster cleared. Team released.`,'ok');
-  if (!skipAutoAssign) await processPendingDisasters();
+  updateAllUI();
 }
 
-async function fbRescueDisaster(id, skipAutoAssign = false) {
+async function fbRescueDisaster(id) {
   const d = S.fbDisasters[id]; if(!d) return;
   if (d.assignedTeam) {
     await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
@@ -731,7 +654,7 @@ async function fbRescueDisaster(id, skipAutoAssign = false) {
   delete S.fbDisasters[id];
   log(`✓ Rescue complete. Team released.`,'ok');
   showHint('✓ Rescue marked complete. Team is now available.');
-  if (!skipAutoAssign) await processPendingDisasters();
+  updateAllUI();
 }
 
 async function fbReassignTeam(tid) {
@@ -742,17 +665,20 @@ async function fbReassignTeam(tid) {
     const unassigned = Object.values(S.fbDisasters).filter(d => !d.assignedTeam);
     if (!unassigned.length) { showHint('No unassigned disasters found.'); return; }
 
-    let best=null, bestDirectDist=Infinity;
-    for (const d of unassigned) {
-      const dx = t.lat - d.lat, dy = t.lng - d.lng;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < bestDirectDist) { bestDirectDist = dist; best = d; }
-    }
-    if (!best) { showHint('❌ No disasters found.'); return; }
+    const emergencyStack = unassigned.filter(d => d.priority === 'emergency');
+    emergencyStack.sort((a,b) => b.id.localeCompare(a.id)); // LIFO Top
+
+    const restPQ = unassigned.filter(d => d.priority !== 'emergency');
+    restPQ.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order); // Priority Top
+
+    const orderToProcess = [...emergencyStack, ...restPQ];
+    const best = orderToProcess[0]; // STRICTLY POP FROM DATA STRUCTURE TOP
 
     let bestRoute = await fetchRoute(t.lat, t.lng, best.lat, best.lng);
     if (!bestRoute) {
-      const m = bestDirectDist * 111000;
+      const dx = t.lat - best.lat, dy = t.lng - best.lng;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const m = dist * 111000;
       bestRoute = { distance: m, duration: Math.round((m/1000)/40*60)*60, coords: [[t.lat, t.lng], [best.lat, best.lng]] };
     }
 
@@ -772,14 +698,15 @@ async function fbReassignTeam(tid) {
     await window._db.setDisaster(best.id, {...best, assignedTeam:tid, route:{coords:bestRoute.coords, km, min}});
     await window._db.setTeam(tid, {...t, available:false});
     S.fbTeams[tid].available = false;
-    log(`${t.name} → Disaster | ${km}km | ~${min}min`,'ok');
-    showHint(`✓ ${t.name} assigned → ${km}km | ~${min}min`);
+    log(`${t.name} dispatched. POPPED Priority: ${best.id.substring(4,9)}`,'ok');
+    showHint(`✓ ${t.name} popped top disaster.`);
   } finally {
     S.isRouting = false;
+    updateAllUI();
   }
 }
 async function clearAllDisasters() {
-  for (const d of Object.values(S.fbDisasters)) await fbClearDisaster(d.id, true);
+  for (const d of Object.values(S.fbDisasters)) await fbClearDisaster(d.id);
 }
 async function clearAllRoutes() {
   for (const d of Object.values(S.fbDisasters)) {
