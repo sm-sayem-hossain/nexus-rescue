@@ -86,11 +86,15 @@ Dijkstra's algorithm in the C backend uses a **Min-Heap** to always extract the 
 
 ```
 nexus-rescue/
-├── index.html              ← Root redirect
+├── index.html
 ├── README.md
-├── proposal.pdf            ← Project proposal
+├── proposal.pdf
+├── Screenshots/
+│   ├── 1.png
+│   ├── 2.png
+│   └── 3.png
 └── web/
-    └── nexus_rescue.html   ← Full application (map, UI, Firebase, routing)
+    └── nexus_rescue.html
 ```
 
 ---
