@@ -624,13 +624,27 @@ async function processPendingDisasters() {
         const pool = Object.values(S.fbTeams).filter(t => t.available !== false);
         if (!pool.length) break; 
         
-        let best=null, bestDist=Infinity, bestRoute=null;
+        let best=null, bestDirectDist=Infinity;
+        // FAST HEURISTIC SEARCH (prevents API limits & loop failures)
         for (const t of pool) {
-          const r = await fetchRoute(t.lat, t.lng, d.lat, d.lng);
-          if (r && r.distance<bestDist) { bestDist=r.distance; best=t; bestRoute=r; }
+          const dx = t.lat - d.lat, dy = t.lng - d.lng;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < bestDirectDist) { bestDirectDist = dist; best = t; }
         }
         
-        if (bestRoute) {
+        if (best) {
+          let bestRoute = await fetchRoute(best.lat, best.lng, d.lat, d.lng);
+          if (!bestRoute) {
+            // Straight-line fallback if API limits reached
+            const straightMeters = bestDirectDist * 111000;
+            bestRoute = {
+              distance: straightMeters,
+              duration: Math.round((straightMeters/1000) / 40 * 60) * 60,
+              coords: [[best.lat, best.lng], [d.lat, d.lng]]
+            };
+            log('API limit reached. Direct routing used.','warn');
+          }
+
           const priorDisasters = Object.values(S.fbDisasters).filter(oldD => oldD.assignedTeam === best.id && oldD.id !== d.id);
           for (const oldDis of priorDisasters) {
             await window._db.setDisaster(oldDis.id, { ...oldDis, assignedTeam: null, route: null });
@@ -641,7 +655,7 @@ async function processPendingDisasters() {
             oldDis.assignedTeam = null; oldDis.route = null;
           }
 
-          const km  = (bestDist/1000).toFixed(2);
+          const km  = (bestRoute.distance/1000).toFixed(2);
           const min = Math.round(bestRoute.duration/60);
           await window._db.setDisaster(d.id, {...d, assignedTeam:best.id, route:{coords:bestRoute.coords, km, min}});
           await window._db.setTeam(best.id, {...S.fbTeams[best.id], available:false});
@@ -728,12 +742,19 @@ async function fbReassignTeam(tid) {
     const unassigned = Object.values(S.fbDisasters).filter(d => !d.assignedTeam);
     if (!unassigned.length) { showHint('No unassigned disasters found.'); return; }
 
-    let best=null, bestDist=Infinity, bestRoute=null;
+    let best=null, bestDirectDist=Infinity;
     for (const d of unassigned) {
-      const r = await fetchRoute(t.lat, t.lng, d.lat, d.lng);
-      if (r && r.distance < bestDist) { bestDist=r.distance; best=d; bestRoute=r; }
+      const dx = t.lat - d.lat, dy = t.lng - d.lng;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < bestDirectDist) { bestDirectDist = dist; best = d; }
     }
-    if (!bestRoute) { showHint('❌ No route found.'); return; }
+    if (!best) { showHint('❌ No disasters found.'); return; }
+
+    let bestRoute = await fetchRoute(t.lat, t.lng, best.lat, best.lng);
+    if (!bestRoute) {
+      const m = bestDirectDist * 111000;
+      bestRoute = { distance: m, duration: Math.round((m/1000)/40*60)*60, coords: [[t.lat, t.lng], [best.lat, best.lng]] };
+    }
 
     const priorDisasters = Object.values(S.fbDisasters).filter(oldD => oldD.assignedTeam === tid && oldD.id !== best.id);
     for (const oldDis of priorDisasters) {
@@ -746,7 +767,7 @@ async function fbReassignTeam(tid) {
       oldDis.route = null;
     }
 
-    const km  = (bestDist/1000).toFixed(2);
+    const km  = (bestRoute.distance/1000).toFixed(2);
     const min = Math.round(bestRoute.duration/60);
     await window._db.setDisaster(best.id, {...best, assignedTeam:tid, route:{coords:bestRoute.coords, km, min}});
     await window._db.setTeam(tid, {...t, available:false});
