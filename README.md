@@ -133,10 +133,10 @@ nexus-rescue/
 ## Screenshots
 
 ### Login
-![Login](screenshots/1.png)
+![Login](Screenshots/1.png)
 
 ### Admin View
-![Admin Panel](screenshots/2.png)
+![Admin Panel](Screenshots/2.png)
 
 ### Public View
-![Public Monitoring](screenshots/3.png)
+![Public Monitoring](Screenshots/3.png)
