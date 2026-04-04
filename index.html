@@ -663,7 +663,11 @@ async function fbReassignTeam(tid) {
   try {
     const t = S.fbTeams[tid]; if(!t || t.available===false) return;
     const unassigned = Object.values(S.fbDisasters).filter(d => !d.assignedTeam);
-    if (!unassigned.length) { showHint('No unassigned disasters found.'); return; }
+    if (!unassigned.length) { 
+      showHint('No unassigned disasters found.'); 
+      log('Assign clicked, but no unassigned disasters available.', 'warn');
+      return; 
+    }
 
     const emergencyStack = unassigned.filter(d => d.priority === 'emergency');
     emergencyStack.sort((a,b) => b.id.localeCompare(a.id)); // LIFO Top
@@ -973,14 +977,14 @@ function updateAllUI() {
   } else if (rc) rc.style.display='none';
 
   // Data Structure Tables (Stack & Priority Queue)
-  const unassigned = disasters.filter(d => d.assignedTeam === null);
+  const unassigned = disasters.filter(d => !d.assignedTeam);
   
   const dsStack = document.getElementById('ds-stack');
   if (dsStack) {
     const emergencyStack = unassigned.filter(d => d.priority === 'emergency');
     emergencyStack.sort((a,b) => b.id.localeCompare(a.id));
     if (!emergencyStack.length) dsStack.innerHTML = '<div class="ds-empty">STACK IS EMPTY</div>';
-    else dsStack.innerHTML = emergencyStack.map((d, i) => `<div class="ds-item"><span>[Top-${i}] ${PRIORITY[d.priority].icon} ${d.id.substring(4,9)}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
+    else dsStack.innerHTML = emergencyStack.map((d, i) => `<div class="ds-item"><span>[Top-${i}] ${PRIORITY[d.priority].icon} #${d.id.split('_')[2]}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
   }
 
   const dsPq = document.getElementById('ds-pq');
@@ -988,7 +992,7 @@ function updateAllUI() {
     const restPQ = unassigned.filter(d => d.priority !== 'emergency');
     restPQ.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order);
     if (!restPQ.length) dsPq.innerHTML = '<div class="ds-empty">PQ IS EMPTY</div>';
-    else dsPq.innerHTML = restPQ.map((d, i) => `<div class="ds-item"><span>#${i+1} ${PRIORITY[d.priority].icon} ${d.id.substring(4,9)}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
+    else dsPq.innerHTML = restPQ.map((d, i) => `<div class="ds-item"><span>#${i+1} ${PRIORITY[d.priority].icon} #${d.id.split('_')[2]}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
   }
 }
 
