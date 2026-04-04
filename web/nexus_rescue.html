@@ -119,6 +119,13 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .le{padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
 .le.info{color:var(--accent);}.le.alert{color:var(--danger);}.le.ok{color:var(--safe);}.le.warn{color:var(--warning);}
 
+/* DATA STRUCTURE TABLES */
+.ds-table{background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:4px;padding:6px;min-height:50px;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;font-family:'Share Tech Mono',monospace;}
+.ds-table::-webkit-scrollbar{width:3px;}
+.ds-table::-webkit-scrollbar-thumb{background:var(--border);}
+.ds-item{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);padding:5px 8px;border-radius:3px;font-size:9px;color:var(--text);}
+.ds-empty{text-align:center;color:var(--dim);opacity:0.5;padding:10px 0;font-size:9px;}
+
 /* HINT BAR */
 .hint-bar{position:fixed;bottom:20px;left:calc((100% - 300px)/2);transform:translateX(-50%);background:rgba(10,21,32,0.92);border:1px solid var(--accent);border-radius:20px;padding:8px 20px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent);z-index:1000;pointer-events:none;backdrop-filter:blur(4px);box-shadow:var(--glow);white-space:nowrap;}
 
@@ -324,6 +331,10 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
         <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);">SYSTEM LOG</div>
         <div class="log" id="sys-log"></div>
         <button class="btn" style="margin-top:4px;" onclick="document.getElementById('sys-log').innerHTML=''">🗑 CLEAR LOG</button>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);margin-top:10px;">PENDING: STACK (EMERGENCY)</div>
+        <div class="ds-table" id="ds-stack"></div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);margin-top:10px;">PENDING: PRIORITY QUEUE (H/M/L)</div>
+        <div class="ds-table" id="ds-pq"></div>
       </div>
     </div>
 
@@ -576,96 +587,75 @@ async function fbDeleteTeam(id) {
  *  FIREBASE — DISASTERS
  * ══════════════════════════════════════════ */
 async function fbAddDisaster(lat, lng) {
-  if (S.isRouting) { showHint('⏳ System busy computing route, please wait.'); return; }
-  S.isRouting = true;
-  try {
-    const id  = 'dis_' + Date.now();
-    const p   = S.priority;
-    const cfg = PRIORITY[p];
+  const id  = 'dis_' + Date.now();
+  const p   = S.priority;
+  const cfg = PRIORITY[p];
 
-    await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:null, route:null});
-    log(`${cfg.icon} [${cfg.label}] Disaster placed`,'alert');
-    showHint('⏳ Computing route...');
-
-    const teams    = Object.values(S.fbTeams);
-    const pool     = teams.filter(t=>t.available!==false);
-    const toCheck  = pool.length>0 ? pool : teams;
-
-    let best=null, bestDist=Infinity, bestRoute=null;
-    for (const t of toCheck) {
-      const r = await fetchRoute(t.lat, t.lng, lat, lng);
-      if (r && r.distance<bestDist) { bestDist=r.distance; best=t; bestRoute=r; }
-    }
-
-    if (!bestRoute) { log('No route found!','alert'); showHint('❌ No route found.'); return; }
-
-    const km  = (bestDist/1000).toFixed(2);
-    const min = Math.round(bestRoute.duration/60);
-
-    const priorDisasters = Object.values(S.fbDisasters).filter(oldD => oldD.assignedTeam === best.id && oldD.id !== id);
-    for (const oldDis of priorDisasters) {
-      await window._db.setDisaster(oldDis.id, { ...oldDis, assignedTeam: null, route: null });
-      if (S.disMarkers[oldDis.id] && S.disMarkers[oldDis.id].routeLayers) {
-        removeLayers(S.disMarkers[oldDis.id].routeLayers);
-        S.disMarkers[oldDis.id].routeLayers = [];
-      }
-      oldDis.assignedTeam = null; 
-      oldDis.route = null;
-    }
-    if (priorDisasters.length > 0) log(`${best.name} redirected from previous missions.`,'warn');
-
-    await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:best.id, route:{coords:bestRoute.coords, km, min}});
-    await window._db.setTeam(best.id, {...S.fbTeams[best.id], available:false});
-    S.fbTeams[best.id].available = false;
-
-    log(`${best.name} → Disaster | ${km}km | ~${min}min`,'ok');
-    showHint(`✓ ${best.name} → ${km}km | ~${min}min`);
-  } finally {
-    S.isRouting = false;
-  }
+  await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:null, route:null});
+  S.fbDisasters[id] = {id, lat, lng, priority:p, assignedTeam:null, route:null};
+  
+  log(`${cfg.icon} [${cfg.label}] Logged to ${p==='emergency'?'Stack':'Priority Queue'}`,'alert');
+  showHint('☑ Location submitted. Assigning teams...');
+  
+  processPendingDisasters();
+  updateAllUI();
 }
 
 async function processPendingDisasters() {
   if (S.isRouting) return;
   S.isRouting = true;
   try {
-    const pending = Object.values(S.fbDisasters).filter(d => d.assignedTeam === null);
-    if (!pending.length) return;
-    pending.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order);
-    
-    for (const d of pending) {
-      const pool = Object.values(S.fbTeams).filter(t => t.available !== false);
-      if (!pool.length) break;
-      
-      let best=null, bestDist=Infinity, bestRoute=null;
-      for (const t of pool) {
-        const r = await fetchRoute(t.lat, t.lng, d.lat, d.lng);
-        if (r && r.distance<bestDist) { bestDist=r.distance; best=t; bestRoute=r; }
-      }
-      
-      if (bestRoute) {
-        const priorDisasters = Object.values(S.fbDisasters).filter(oldD => oldD.assignedTeam === best.id && oldD.id !== d.id);
-        for (const oldDis of priorDisasters) {
-          await window._db.setDisaster(oldDis.id, { ...oldDis, assignedTeam: null, route: null });
-          if (S.disMarkers[oldDis.id] && S.disMarkers[oldDis.id].routeLayers) {
-            removeLayers(S.disMarkers[oldDis.id].routeLayers);
-            S.disMarkers[oldDis.id].routeLayers = [];
-          }
-          oldDis.assignedTeam = null;
-          oldDis.route = null;
-        }
+    let pending = Object.values(S.fbDisasters).filter(d => d.assignedTeam === null);
+    while (pending.length > 0) {
+      const emergencyStack = pending.filter(d => d.priority === 'emergency');
+      emergencyStack.sort((a,b) => b.id.localeCompare(a.id));
 
-        const km  = (bestDist/1000).toFixed(2);
-        const min = Math.round(bestRoute.duration/60);
-        await window._db.setDisaster(d.id, {...d, assignedTeam:best.id, route:{coords:bestRoute.coords, km, min}});
-        await window._db.setTeam(best.id, {...S.fbTeams[best.id], available:false});
-        S.fbTeams[best.id].available = false;
-        d.assignedTeam = best.id;
-        log(`${best.name} auto-assigned to pending disaster.`,'ok');
+      const restPQ = pending.filter(d => d.priority !== 'emergency');
+      restPQ.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order);
+
+      const orderToProcess = [...emergencyStack, ...restPQ];
+      let assignedAny = false;
+
+      for (const d of orderToProcess) {
+        const pool = Object.values(S.fbTeams).filter(t => t.available !== false);
+        if (!pool.length) break; 
+        
+        let best=null, bestDist=Infinity, bestRoute=null;
+        for (const t of pool) {
+          const r = await fetchRoute(t.lat, t.lng, d.lat, d.lng);
+          if (r && r.distance<bestDist) { bestDist=r.distance; best=t; bestRoute=r; }
+        }
+        
+        if (bestRoute) {
+          const priorDisasters = Object.values(S.fbDisasters).filter(oldD => oldD.assignedTeam === best.id && oldD.id !== d.id);
+          for (const oldDis of priorDisasters) {
+            await window._db.setDisaster(oldDis.id, { ...oldDis, assignedTeam: null, route: null });
+            if (S.disMarkers[oldDis.id] && S.disMarkers[oldDis.id].routeLayers) {
+              removeLayers(S.disMarkers[oldDis.id].routeLayers);
+              S.disMarkers[oldDis.id].routeLayers = [];
+            }
+            oldDis.assignedTeam = null; oldDis.route = null;
+          }
+
+          const km  = (bestDist/1000).toFixed(2);
+          const min = Math.round(bestRoute.duration/60);
+          await window._db.setDisaster(d.id, {...d, assignedTeam:best.id, route:{coords:bestRoute.coords, km, min}});
+          await window._db.setTeam(best.id, {...S.fbTeams[best.id], available:false});
+          S.fbTeams[best.id].available = false;
+          S.fbDisasters[d.id].assignedTeam = best.id;
+          d.assignedTeam = best.id;
+          log(`${best.name} auto-assigned to disaster.`,'ok');
+          assignedAny = true;
+          break;
+        }
       }
+      
+      if (!assignedAny) break; 
+      pending = Object.values(S.fbDisasters).filter(d => d.assignedTeam === null);
     }
   } finally {
     S.isRouting = false;
+    updateAllUI();
   }
 }
 
@@ -1029,6 +1019,25 @@ function updateAllUI() {
         ${d.route?`<div>Dist : <b style="color:#fff;">${d.route.km} km</b></div><div>ETA &nbsp;: <b style="color:#fff;">~${d.route.min} min</b></div>`:''}`;
     }
   } else if (rc) rc.style.display='none';
+
+  // Data Structure Tables (Stack & Priority Queue)
+  const unassigned = disasters.filter(d => d.assignedTeam === null);
+  
+  const dsStack = document.getElementById('ds-stack');
+  if (dsStack) {
+    const emergencyStack = unassigned.filter(d => d.priority === 'emergency');
+    emergencyStack.sort((a,b) => b.id.localeCompare(a.id));
+    if (!emergencyStack.length) dsStack.innerHTML = '<div class="ds-empty">STACK IS EMPTY</div>';
+    else dsStack.innerHTML = emergencyStack.map((d, i) => `<div class="ds-item"><span>[Top-${i}] ${PRIORITY[d.priority].icon} ${d.id.substring(4,9)}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
+  }
+
+  const dsPq = document.getElementById('ds-pq');
+  if (dsPq) {
+    const restPQ = unassigned.filter(d => d.priority !== 'emergency');
+    restPQ.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order);
+    if (!restPQ.length) dsPq.innerHTML = '<div class="ds-empty">PQ IS EMPTY</div>';
+    else dsPq.innerHTML = restPQ.map((d, i) => `<div class="ds-item"><span>#${i+1} ${PRIORITY[d.priority].icon} ${d.id.substring(4,9)}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
+  }
 }
 
 /* ══════════════════════════════════════════
