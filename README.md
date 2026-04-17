@@ -1,96 +1,89 @@
 # NEXUS RESCUE
 
-**Real-time disaster response coordination platform for Bangladesh.**
+Real-time disaster response coordination platform for Bangladesh.
 
 Live at [sm-sayem-hossain.github.io/nexus-rescue](https://sm-sayem-hossain.github.io/nexus-rescue/)
 
 ---
 
-## Overview
+## What it does
 
-NEXUS RESCUE is a multi-admin disaster management system built for national-scale emergency response operations in Bangladesh. It combines real-time mapping, intelligent team deployment, cross-admin coordination, and an AI assistant trained on live operational data — all delivered as a single, zero-dependency HTML file.
+NEXUS RESCUE lets multiple rescue coordinators work the same map simultaneously during an active disaster. Each admin deploys teams, marks road blocks, and tracks routes in real-time. A built-in AI assistant reads the live map state and answers operational questions — including web searches across Bangladeshi news outlets and government disaster portals.
 
-The system is actively used for coordinating rescue teams across flood, cyclone, and other disaster scenarios. Admins can deploy from any browser, with no installation required.
+The entire system ships as a single HTML file with no build step and no backend to maintain.
 
 ---
 
-## Features
+## Key Features
 
-**Operational Core**
-- Interactive real-time map (Leaflet + CartoDB dark tiles) centered on Bangladesh
-- Place disaster markers with four priority levels: Emergency, High, Medium, Low
-- Deploy rescue teams and assign them to disasters with live ETA and route calculation
-- Road block marking with automatic route avoidance via OpenRouteService
-- Animated route visualization with turn-by-turn path rendering
+**Live map coordination** across multiple admins at once, with ownership-based permissions so each admin controls only their own teams and disasters. A Super Admin has full override access and manages who gets in.
 
-**Multi-Admin System**
-- Firebase Authentication with email/password login
-- Super Admin creates and manages individual admin accounts from a control panel
-- Each admin owns their teams and disasters — other admins cannot modify them
-- Super Admin has full override access across all data
+**Intelligent auto-deployment** that assigns the nearest available team to each new disaster the moment it's placed on the map. Priority ordering follows a hybrid stack/queue structure — Emergency disasters use LIFO, everything else goes through a priority queue.
 
-**Auto Deployment Mode** (Super Admin only)
-- Toggle-based automatic team assignment
-- When enabled, any new disaster instantly receives the nearest available team
-- Any newly added team is automatically routed to the highest-priority unassigned disaster
-- Priority ordering: Emergency > High > Medium > Low, then distance as tiebreaker
-- Mode persists across sessions via Firebase — all admins see it in real-time
+**Optimized routing** via OpenRouteService with active road block avoidance. When a block is marked on the map, subsequent routes calculate around it automatically.
 
-**Secure Admin Chat**
-- Real-time group messaging channel for all logged-in admins
-- Image sharing via Firebase Storage
-- Messages stored permanently in Cloudflare D1
-- Sender identity shown with display name
+**NEXUS AI** — a context-aware assistant that knows every active disaster, team position, road block, and ETA on the map right now. It searches live sources (Daily Star, Prothom Alo, DDM, BMD, FFWC) via Tavily and maintains conversation memory across the session.
 
-**NEXUS AI Agent**
-- Conversational AI assistant with full awareness of live map state
-- Knows all active disasters, team positions, assignments, road blocks, and admin list
-- Web search via Tavily — pulls real-time data from Daily Star, Prothom Alo, DDM, BMD, FFWC, and other Bangladesh sources
-- Conversation memory across the session (last 10 exchanges)
-- Responds in Bengali or English depending on the query language
-- Backed by Groq (LLaMA 3.3 70B)
+**Permanent audit trail** — every action (disaster placed, team deployed, road blocked, rescue completed) is logged to a write-only SQL database with timestamp, coordinates, and admin identity. Nothing is ever deleted.
 
-**Permanent Activity Logging**
-- Every disaster, team, and road block event is logged to Cloudflare D1 with timestamp, admin identity, and coordinates
-- Frontend shows a live session feed; full history is fetchable from the database
-- Logs are write-only — no data is ever deleted
+**Encrypted admin channel** — real-time group chat with image sharing, stored permanently alongside the activity log.
 
 ---
 
 ## Architecture
 
-```
-Browser (index.html)
-│
-├── Firebase Realtime Database    — live map state (teams, disasters, blocks, chat, settings)
-├── Firebase Authentication       — admin identity and session management
-├── Firebase Storage              — chat image uploads
-│
-└── Cloudflare Worker (royal-pond)
-    ├── /route                    — proxies OpenRouteService routing API (key hidden)
-    ├── /log                      — writes activity events to D1
-    ├── /logs                     — reads activity history from D1
-    ├── /chat                     — reads/writes chat messages to D1
-    └── /ai                       — Tavily web search + Groq LLM inference
-        │
-        ├── Cloudflare D1 (nrv3-logs)
-        │   ├── activity_log      — permanent event history
-        │   ├── chat_messages     — permanent chat history
-        │   └── disaster_knowledge — historical disaster data (RAG source)
-        │
-        ├── Tavily Search API     — real-time web search
-        └── Groq API              — LLaMA 3.3 70B inference
+```mermaid
+flowchart TD
+    Browser["Browser\nindex.html"]
+
+    Browser --> FBAuth["Firebase Auth\nEmail / Password Login"]
+    Browser --> FBDB["Firebase Realtime DB\nTeams · Disasters · Blocks · Chat · Settings"]
+    Browser --> FBStorage["Firebase Storage\nChat Image Uploads"]
+    Browser --> Worker["Cloudflare Worker\nroyal-pond"]
+
+    Worker --> ORS["OpenRouteService API\nDriving-car Routing"]
+    Worker --> D1[("Cloudflare D1\nnrv3-logs")]
+    Worker --> Tavily["Tavily Search API\nLive Web Search"]
+    Worker --> Groq["Groq API\nLLaMA 3.3 70B"]
+
+    D1 --> AL["activity_log\nPermanent Event History"]
+    D1 --> CM["chat_messages\nPermanent Chat History"]
+    D1 --> DK["disaster_knowledge\nHistorical RAG Source"]
+
+    Tavily --> Sources["thedailystar.net · prothomalo.com\nddm.gov.bd · bmd.gov.bd · ffwc.gov.bd\nbdnews24.com · reliefweb.int"]
 ```
 
-**Data flow for AI queries:**
+**AI query flow:**
+
+```mermaid
+flowchart LR
+    Q["Admin question"] --> W["Cloudflare Worker"]
+    W --> T["Tavily\nlive news search"]
+    W --> K["D1 knowledge base\nhistorical data"]
+    W --> F["Firebase state\ncurrent map data"]
+    T & K & F --> G["Groq LLM\ncontext + response"]
+    G --> A["Answer"]
 ```
-Admin question
-  → Cloudflare Worker
-    → Tavily search (live news/govt sources)
-    → D1 knowledge base (historical data)
-    → Firebase state (current disasters, teams, blocks)
-  → Groq LLM (context assembly + response)
-  → Admin
+
+---
+
+## Structure
+
+```
+nexus-rescue/
+├── index.html        # Entire frontend — map, UI, Firebase, AI chat
+└── README.md
+```
+
+The Cloudflare Worker (`royal-pond`) is deployed separately and holds all API secrets. It exposes five endpoints:
+
+```
+POST /route    proxies OpenRouteService (ORS key hidden server-side)
+POST /log      writes an activity event to D1
+GET  /logs     reads activity history from D1
+POST /chat     writes a chat message to D1
+GET  /chat     reads chat history from D1
+POST /ai       Tavily search + D1 lookup + Groq inference
 ```
 
 ---
@@ -99,23 +92,23 @@ Admin question
 
 | Layer | Technology |
 |---|---|
-| Frontend | Vanilla HTML, CSS, JavaScript (zero frameworks) |
+| Frontend | Vanilla HTML/CSS/JS — zero frameworks, zero build step |
 | Map | Leaflet.js 1.9.4 + CartoDB dark tiles |
-| Realtime Database | Firebase Realtime Database |
-| Authentication | Firebase Auth (email/password) |
-| File Storage | Firebase Storage |
-| Edge Compute | Cloudflare Workers |
-| Persistent Database | Cloudflare D1 (SQLite) |
-| Routing API | OpenRouteService (driving-car profile) |
-| AI Inference | Groq — LLaMA 3.3 70B Versatile |
-| Web Search | Tavily Search API |
+| Realtime sync | Firebase Realtime Database |
+| Authentication | Firebase Auth |
+| File storage | Firebase Storage |
+| Edge compute | Cloudflare Workers |
+| Persistent storage | Cloudflare D1 (SQLite at the edge) |
+| Routing | OpenRouteService — driving-car profile |
+| AI inference | Groq — LLaMA 3.3 70B Versatile |
+| Web search | Tavily Search API |
 | Hosting | GitHub Pages / Cloudflare Pages |
 
 ---
 
 ## Database Schema
 
-**Cloudflare D1 — `nrv3-logs`**
+**Cloudflare D1**
 
 ```sql
 CREATE TABLE activity_log (
@@ -141,77 +134,51 @@ CREATE TABLE chat_messages (
 );
 
 CREATE TABLE disaster_knowledge (
-  id           TEXT    PRIMARY KEY,
-  source       TEXT    NOT NULL,
-  title        TEXT,
-  content      TEXT    NOT NULL,
-  date         TEXT,
-  location     TEXT,
+  id            TEXT    PRIMARY KEY,
+  source        TEXT    NOT NULL,
+  title         TEXT,
+  content       TEXT    NOT NULL,
+  date          TEXT,
+  location      TEXT,
   disaster_type TEXT,
-  url          TEXT,
-  collected_at INTEGER
+  url           TEXT,
+  collected_at  INTEGER
 );
 ```
 
-**Firebase Realtime Database structure:**
+**Firebase Realtime Database**
 
 ```
-/teams/{id}        — name, lat, lng, color, available, ownerUid
-/disasters/{id}    — lat, lng, priority, assignedTeam, route, ownerUid
-/blocks/{id}       — p1{lat,lng}, p2{lat,lng}, ownerUid
-/admins/{uid}      — displayName, email, createdAt
-/chat/{id}         — admin_id, admin_name, text, image_url, date, time, timestamp
-/settings/autoMode — boolean, synced across all sessions
+/teams/{id}         name, lat, lng, color, available, ownerUid
+/disasters/{id}     lat, lng, priority, assignedTeam, route{km,min,coords}, ownerUid
+/blocks/{id}        p1{lat,lng}, p2{lat,lng}, ownerUid
+/admins/{uid}       displayName, email, createdAt
+/chat/{id}          admin_id, admin_name, text, image_url, date, time, timestamp
+/settings/autoMode  boolean — synced across all admin sessions in real-time
 ```
 
 ---
 
 ## Access Levels
 
-| Role | Capabilities |
+| Role | What they can do |
 |---|---|
-| Public | View map, disasters, teams, road blocks in real-time |
-| Admin | Add/edit/delete own teams and disasters, block roads, use chat and AI |
-| Super Admin | All admin capabilities + manage admin accounts + auto deployment control + full data override |
+| Public | View map, active disasters, deployed teams, road blocks |
+| Admin | Everything above, plus add/edit/delete own teams and disasters, mark road blocks, use AI and chat |
+| Super Admin | Full system access, manage admin accounts, toggle auto-deployment globally |
 
 ---
 
-## Disaster Priority System
+## Priority System
 
-Emergencies follow a hybrid data structure:
-
-- **Emergency** priority disasters are processed via a **stack** (LIFO) — most recent emergency gets attention first
-- **High / Medium / Low** priority disasters are processed via a **priority queue** — ordered by severity
-
-When Auto Deployment Mode is active, this ordering governs which disaster a newly available team is assigned to.
+Disaster dispatch uses a hybrid data structure. Emergency-level disasters are held in a stack and processed last-in-first-out. High, Medium, and Low priorities go into a priority queue ordered by severity. When Auto Deployment Mode is on, this ordering determines which disaster a newly available team gets assigned to.
 
 ---
 
-## AI Sources
+## Security
 
-The NEXUS AI agent searches the following sources in real-time:
-
-- thedailystar.net
-- prothomalo.com
-- bdnews24.com
-- jamunatv.com
-- somoynews.tv
-- ddm.gov.bd (Department of Disaster Management)
-- bmd.gov.bd (Bangladesh Meteorological Department)
-- ffwc.gov.bd (Flood Forecasting and Warning Centre)
-- reliefweb.int
+All third-party API keys (ORS, Groq, Tavily) live exclusively in Cloudflare Worker environment secrets and are never sent to the browser. Firebase config is public by design; access control is enforced through Firebase Security Rules requiring `auth != null` on all write paths.
 
 ---
 
-## Security Notes
-
-- All third-party API keys (ORS, Groq, Tavily) are stored as Cloudflare Worker secrets — never exposed to the browser
-- Firebase config is intentionally public; access is governed by Firebase Security Rules
-- Firebase Rules enforce `auth != null` on all write operations and sensitive read paths
-- `serviceAccount.json` and `.env` are excluded from version control
-
----
-
-## Built by
-
-S.M. Sayem Hossain
+Built by S.M. Sayem Hossain
