@@ -1,146 +1,217 @@
 # NEXUS RESCUE
-### Disaster Route Optimizer with Dynamic Hazard Management
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Online-brightgreen)](https://sm-sayem-hossain.github.io/nexus-rescue/)
-[![Database](https://img.shields.io/badge/Database-Firebase-orange)](https://firebase.google.com/)
-[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+**Real-time disaster response coordination platform for Bangladesh.**
+
+Live at [sm-sayem-hossain.github.io/nexus-rescue](https://sm-sayem-hossain.github.io/nexus-rescue/)
 
 ---
 
 ## Overview
 
-NEXUS Rescue is a real-time disaster response coordination system built as a Data Structure Lab project. It demonstrates core data structures and algorithms in a real-world context — managing rescue teams, computing optimal routes, and prioritizing disaster response across a live interactive map.
+NEXUS RESCUE is a multi-admin disaster management system built for national-scale emergency response operations in Bangladesh. It combines real-time mapping, intelligent team deployment, cross-admin coordination, and an AI assistant trained on live operational data — all delivered as a single, zero-dependency HTML file.
 
-All data syncs in real time via Firebase. Admins control the operation; the public can monitor live.
-
----
-
-## Data Structures & Algorithms
-
-This is the core of the project. Every feature is backed by a specific data structure.
-
-### Stack — Emergency Dispatch (LIFO)
-Emergency-priority disasters are pushed onto a **Stack**. When a team is manually dispatched, it pops from the top (Last In, First Out) — the most recently reported emergency gets handled first, simulating real incident response urgency.
-
-### Priority Queue — Multi-Priority Dispatch
-Non-emergency disasters (High, Medium, Low) are managed in a **Priority Queue**. Disasters are ordered by severity, so higher-priority ones are always dispatched before lower ones regardless of arrival order.
-
-### Dijkstra's Algorithm — Shortest Path Routing
-When a team is assigned to a disaster, **Dijkstra's algorithm** computes the shortest road path. The OpenRouteService API handles real road graph traversal, and blocked roads are excluded from the graph using polygon avoidance — simulating edge removal in a weighted graph.
-
-### BFS — Hazard Zone Propagation
-**Breadth-First Search** is used in the C backend to propagate hazard levels outward from a disaster origin. Level 0 = danger zone, Level 1 = warning zone — spreading layer by layer like BFS explores nodes level by level.
-
-### Greedy Algorithm — Team Assignment
-When a new disaster is placed, the system uses a **Greedy approach** — it immediately picks the nearest available team based on route distance without backtracking or reconsidering. Fast and effective for real-time dispatch.
-
-### Adjacency List — Road Graph (C Backend)
-The road network in the C implementation is represented as an **Adjacency List** — each location node stores a linked list of connected roads with weights (distances). This is the foundation for both Dijkstra and BFS.
-
-### Min-Heap — Dijkstra's Priority Queue
-Dijkstra's algorithm in the C backend uses a **Min-Heap** to always extract the node with the smallest current distance — achieving O((V + E) log V) time complexity.
+The system is actively used for coordinating rescue teams across flood, cyclone, and other disaster scenarios. Admins can deploy from any browser, with no installation required.
 
 ---
 
 ## Features
 
-**Admin Panel**
-- Deploy rescue teams with names and color codes
-- Place disasters with 4 priority levels — Emergency, High, Medium, Low
-- Stack visualization for emergency queue (LIFO)
-- Priority Queue visualization for other disasters
-- Manually reassign available teams (⇒) to unassigned disasters
-- Mark disasters rescued (✓) — releases the team automatically
-- Clear individual disasters (✕)
-- Move team location via map click (📍) — drag is locked to prevent accidents
-- Block roads using two-point selection — affects all route calculations
-- Clear all disasters, routes, or blocks independently
-- Full system reset
+**Operational Core**
+- Interactive real-time map (Leaflet + CartoDB dark tiles) centered on Bangladesh
+- Place disaster markers with four priority levels: Emergency, High, Medium, Low
+- Deploy rescue teams and assign them to disasters with live ETA and route calculation
+- Road block marking with automatic route avoidance via OpenRouteService
+- Animated route visualization with turn-by-turn path rendering
 
-**Real-Time Sync**
-- Firebase Realtime Database — instant cross-device sync
-- Live connection indicator
-- Public read-only view for monitoring
+**Multi-Admin System**
+- Firebase Authentication with email/password login
+- Super Admin creates and manages individual admin accounts from a control panel
+- Each admin owns their teams and disasters — other admins cannot modify them
+- Super Admin has full override access across all data
 
-**Routing**
-- Real road routing via OpenRouteService API
-- Animated route lines with ETA and distance
-- Blocked roads excluded from all route calculations
+**Auto Deployment Mode** (Super Admin only)
+- Toggle-based automatic team assignment
+- When enabled, any new disaster instantly receives the nearest available team
+- Any newly added team is automatically routed to the highest-priority unassigned disaster
+- Priority ordering: Emergency > High > Medium > Low, then distance as tiebreaker
+- Mode persists across sessions via Firebase — all admins see it in real-time
+
+**Secure Admin Chat**
+- Real-time group messaging channel for all logged-in admins
+- Image sharing via Firebase Storage
+- Messages stored permanently in Cloudflare D1
+- Sender identity shown with display name
+
+**NEXUS AI Agent**
+- Conversational AI assistant with full awareness of live map state
+- Knows all active disasters, team positions, assignments, road blocks, and admin list
+- Web search via Tavily — pulls real-time data from Daily Star, Prothom Alo, DDM, BMD, FFWC, and other Bangladesh sources
+- Conversation memory across the session (last 10 exchanges)
+- Responds in Bengali or English depending on the query language
+- Backed by Groq (LLaMA 3.3 70B)
+
+**Permanent Activity Logging**
+- Every disaster, team, and road block event is logged to Cloudflare D1 with timestamp, admin identity, and coordinates
+- Frontend shows a live session feed; full history is fetchable from the database
+- Logs are write-only — no data is ever deleted
+
+---
+
+## Architecture
+
+```
+Browser (index.html)
+│
+├── Firebase Realtime Database    — live map state (teams, disasters, blocks, chat, settings)
+├── Firebase Authentication       — admin identity and session management
+├── Firebase Storage              — chat image uploads
+│
+└── Cloudflare Worker (royal-pond)
+    ├── /route                    — proxies OpenRouteService routing API (key hidden)
+    ├── /log                      — writes activity events to D1
+    ├── /logs                     — reads activity history from D1
+    ├── /chat                     — reads/writes chat messages to D1
+    └── /ai                       — Tavily web search + Groq LLM inference
+        │
+        ├── Cloudflare D1 (nrv3-logs)
+        │   ├── activity_log      — permanent event history
+        │   ├── chat_messages     — permanent chat history
+        │   └── disaster_knowledge — historical disaster data (RAG source)
+        │
+        ├── Tavily Search API     — real-time web search
+        └── Groq API              — LLaMA 3.3 70B inference
+```
+
+**Data flow for AI queries:**
+```
+Admin question
+  → Cloudflare Worker
+    → Tavily search (live news/govt sources)
+    → D1 knowledge base (historical data)
+    → Firebase state (current disasters, teams, blocks)
+  → Groq LLM (context assembly + response)
+  → Admin
+```
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Map | Leaflet.js + CartoDB Dark Tiles |
-| Routing | OpenRouteService API |
-| Database | Firebase Realtime Database |
-| Algorithm Backend | C |
-| Frontend | HTML, CSS, JavaScript |
-| Hosting | GitHub Pages |
+|---|---|
+| Frontend | Vanilla HTML, CSS, JavaScript (zero frameworks) |
+| Map | Leaflet.js 1.9.4 + CartoDB dark tiles |
+| Realtime Database | Firebase Realtime Database |
+| Authentication | Firebase Auth (email/password) |
+| File Storage | Firebase Storage |
+| Edge Compute | Cloudflare Workers |
+| Persistent Database | Cloudflare D1 (SQLite) |
+| Routing API | OpenRouteService (driving-car profile) |
+| AI Inference | Groq — LLaMA 3.3 70B Versatile |
+| Web Search | Tavily Search API |
+| Hosting | GitHub Pages / Cloudflare Pages |
 
 ---
 
-## Repository Structure
+## Database Schema
+
+**Cloudflare D1 — `nrv3-logs`**
+
+```sql
+CREATE TABLE activity_log (
+  id           TEXT    PRIMARY KEY,
+  event_type   TEXT    NOT NULL,
+  admin_id     TEXT    NOT NULL,
+  admin_name   TEXT    NOT NULL,
+  details      TEXT,
+  lat          REAL,
+  lng          REAL,
+  timestamp    INTEGER NOT NULL
+);
+
+CREATE TABLE chat_messages (
+  id           TEXT    PRIMARY KEY,
+  admin_id     TEXT    NOT NULL,
+  admin_name   TEXT    NOT NULL,
+  text         TEXT,
+  image_url    TEXT,
+  date         TEXT    NOT NULL,
+  time         TEXT    NOT NULL,
+  timestamp    INTEGER NOT NULL
+);
+
+CREATE TABLE disaster_knowledge (
+  id           TEXT    PRIMARY KEY,
+  source       TEXT    NOT NULL,
+  title        TEXT,
+  content      TEXT    NOT NULL,
+  date         TEXT,
+  location     TEXT,
+  disaster_type TEXT,
+  url          TEXT,
+  collected_at INTEGER
+);
+```
+
+**Firebase Realtime Database structure:**
 
 ```
-nexus-rescue/
-├── index.html
-├── README.md
-├── proposal.pdf
-├── Screenshots/
-│   ├── 1.png
-│   ├── 2.png
-│   └── 3.png
-└── web/
-    └── nexus_rescue.html
+/teams/{id}        — name, lat, lng, color, available, ownerUid
+/disasters/{id}    — lat, lng, priority, assignedTeam, route, ownerUid
+/blocks/{id}       — p1{lat,lng}, p2{lat,lng}, ownerUid
+/admins/{uid}      — displayName, email, createdAt
+/chat/{id}         — admin_id, admin_name, text, image_url, date, time, timestamp
+/settings/autoMode — boolean, synced across all sessions
 ```
 
 ---
 
-## How to Use
+## Access Levels
 
-**Admin**
-1. Open [nexus-rescue live](https://sm-sayem-hossain.github.io/nexus-rescue/)
-2. Login with admin credentials
-3. Add teams → place disasters → watch routes compute
-4. Use ⇒ to manually assign available teams to unassigned disasters
-5. Use ✓ when a rescue is complete — team returns to available
-6. Use 📍 to reposition a team by clicking the map
-7. Use BLOCK ROAD to simulate road closures
-
-**Public**
-1. Open the site — no login needed
-2. Monitor live team positions, active disasters, and routes
+| Role | Capabilities |
+|---|---|
+| Public | View map, disasters, teams, road blocks in real-time |
+| Admin | Add/edit/delete own teams and disasters, block roads, use chat and AI |
+| Super Admin | All admin capabilities + manage admin accounts + auto deployment control + full data override |
 
 ---
 
-## Live Demo
+## Disaster Priority System
 
-**[https://sm-sayem-hossain.github.io/nexus-rescue/](https://sm-sayem-hossain.github.io/nexus-rescue/)**
+Emergencies follow a hybrid data structure:
 
----
+- **Emergency** priority disasters are processed via a **stack** (LIFO) — most recent emergency gets attention first
+- **High / Medium / Low** priority disasters are processed via a **priority queue** — ordered by severity
 
-## Course Info
-
-**Course:** CSE 124 — Data Structure Lab
-**Group:** 5
-**Institution:** Daffodil International University
+When Auto Deployment Mode is active, this ordering governs which disaster a newly available team is assigned to.
 
 ---
 
-*Data structures aren't just theory. This is proof.*
+## AI Sources
+
+The NEXUS AI agent searches the following sources in real-time:
+
+- thedailystar.net
+- prothomalo.com
+- bdnews24.com
+- jamunatv.com
+- somoynews.tv
+- ddm.gov.bd (Department of Disaster Management)
+- bmd.gov.bd (Bangladesh Meteorological Department)
+- ffwc.gov.bd (Flood Forecasting and Warning Centre)
+- reliefweb.int
 
 ---
 
-## Screenshots
+## Security Notes
 
-### Login
-![Login](Screenshots/1.png)
+- All third-party API keys (ORS, Groq, Tavily) are stored as Cloudflare Worker secrets — never exposed to the browser
+- Firebase config is intentionally public; access is governed by Firebase Security Rules
+- Firebase Rules enforce `auth != null` on all write operations and sensitive read paths
+- `serviceAccount.json` and `.env` are excluded from version control
 
-### Admin View
-![Admin Panel](Screenshots/2.png)
+---
 
-### Public View
-![Public Monitoring](Screenshots/3.png)
+## Built by
+
+S.M. Sayem Hossain
