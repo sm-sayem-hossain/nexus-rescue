@@ -3,49 +3,82 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXUS RESCUE — Disaster Route Optimizer</title>
+<title>NEXUS RESCUE V3 — Disaster Route Optimizer</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
 <!-- Firebase -->
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, remove, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { initializeApp }                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  createUserWithEmailAndPassword,
+  deleteUser,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCLsTOnL7HN27R_MH0vivy9Tq-py93X6pE",
-  authDomain: "nexus-rescue-28a98.firebaseapp.com",
-  databaseURL: "https://nexus-rescue-28a98-default-rtdb.firebaseio.com",
-  projectId: "nexus-rescue-28a98",
-  storageBucket: "nexus-rescue-28a98.firebasestorage.app",
-  messagingSenderId: "151024119492",
-  appId: "1:151024119492:web:e7208e7fdff11e23092391"
+  apiKey:            "AIzaSyAPgFwDdT84rnwFO20WnFvL2oaWLUx97kA",
+  authDomain:        "nrv3-e17a5.firebaseapp.com",
+  databaseURL:       "https://nrv3-e17a5-default-rtdb.firebaseio.com",
+  projectId:         "nrv3-e17a5",
+  storageBucket:     "nrv3-e17a5.firebasestorage.app",
+  messagingSenderId: "482888016152",
+  appId:             "1:482888016152:web:caef395f8ab5a1178e3e6d"
 };
 
-const app = initializeApp(firebaseConfig);
-const db  = getDatabase(app);
+const SUPER_ADMIN_UID = "y8a2gUU79HVGNc60udoqPRppFMx1";
 
-/* ── expose DB helpers to global scope ── */
+const app  = initializeApp(firebaseConfig);
+const db   = getDatabase(app);
+const auth = getAuth(app);
+const storage = getStorage(app);
+
+const CF_API_URL = "https://your-cloudflare-worker-url.workers.dev"; // UPDATE THIS
+
+/* ── DB helpers ── */
 window._db = {
-  // disasters
-  setDisaster:    (id, data) => set(ref(db, `disasters/${id}`), data),
-  removeDisaster: (id)       => remove(ref(db, `disasters/${id}`)),
-  watchDisasters: (cb)       => onValue(ref(db, 'disasters'), snap => cb(snap.val() || {})),
+  setDisaster:    (id, d) => set(ref(db, `disasters/${id}`), d),
+  removeDisaster: (id)    => remove(ref(db, `disasters/${id}`)),
+  watchDisasters: (cb)    => onValue(ref(db, 'disasters'), s => cb(s.val() || {})),
 
-  // blocks
-  setBlock:    (id, data) => set(ref(db, `blocks/${id}`), data),
-  removeBlock: (id)       => remove(ref(db, `blocks/${id}`)),
-  watchBlocks: (cb)       => onValue(ref(db, 'blocks'), snap => cb(snap.val() || {})),
+  setBlock:    (id, d) => set(ref(db, `blocks/${id}`), d),
+  removeBlock: (id)    => remove(ref(db, `blocks/${id}`)),
+  watchBlocks: (cb)    => onValue(ref(db, 'blocks'), s => cb(s.val() || {})),
 
-  // teams
-  setTeam:    (id, data) => set(ref(db, `teams/${id}`), data),
-  removeTeam: (id)       => remove(ref(db, `teams/${id}`)),
-  watchTeams: (cb)       => onValue(ref(db, 'teams'), snap => cb(snap.val() || {})),
+  setTeam:    (id, d) => set(ref(db, `teams/${id}`), d),
+  removeTeam: (id)    => remove(ref(db, `teams/${id}`)),
+  watchTeams: (cb)    => onValue(ref(db, 'teams'), s => cb(s.val() || {})),
+
+  setAdminMeta:    (uid, d) => set(ref(db, `admins/${uid}`), d),
+  removeAdminMeta: (uid)    => remove(ref(db, `admins/${uid}`)),
+  watchAdmins:     (cb)     => onValue(ref(db, 'admins'), s => cb(s.val() || {})),
+
+  setChat:         (id, d)  => set(ref(db, `chat/${id}`), d),
+  watchChat:       (cb)     => onValue(ref(db, 'chat'), s => cb(s.val() || {})),
+
+  setAutoMode:     (val)    => set(ref(db, 'settings/autoMode'), val),
+  watchAutoMode:   (cb)     => onValue(ref(db, 'settings/autoMode'), s => cb(s.val() || false)),
 };
 
-// Signal app that Firebase is ready
+/* ── Auth helpers ── */
+window._auth = {
+  login:        (email, pass) => signInWithEmailAndPassword(auth, email, pass),
+  logout:       ()            => signOut(auth),
+  createAdmin:  (email, pass) => createUserWithEmailAndPassword(auth, email, pass),
+  onAuthChange: (cb)          => onAuthStateChanged(auth, cb),
+  currentUser:  ()            => auth.currentUser,
+  isSuperAdmin: ()            => auth.currentUser?.uid === SUPER_ADMIN_UID,
+};
+
 window.dispatchEvent(new Event('firebase-ready'));
 </script>
+
 <style>
 :root{
   --bg:#050d14;--panel:#0a1520;--border:#0f2a3d;
@@ -66,10 +99,10 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .status-pill{display:flex;align-items:center;gap:8px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--dim);}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--safe);animation:kpulse 1.5s infinite;}
 .pulse.red{background:var(--danger);animation:kpulse-fast .6s infinite;}
-.pulse.yellow{background:var(--warning);animation:kpulse .8s infinite;}
 @keyframes kpulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 @keyframes kpulse-fast{0%,100%{opacity:1;}50%{opacity:.2;}}
 .role-badge{font-family:'Share Tech Mono',monospace;font-size:10px;padding:3px 10px;border-radius:3px;letter-spacing:1px;}
+.role-badge.superadmin{background:rgba(255,170,0,0.15);border:1px solid var(--warning);color:var(--warning);}
 .role-badge.admin{background:rgba(0,229,255,0.1);border:1px solid var(--accent);color:var(--accent);}
 .role-badge.public{background:rgba(74,106,125,0.15);border:1px solid var(--dim);color:var(--dim);}
 .sync-dot{width:6px;height:6px;border-radius:50%;background:var(--safe);display:inline-block;margin-left:4px;}
@@ -99,6 +132,8 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .btn.red{border-color:var(--danger);color:var(--danger);background:rgba(255,59,59,0.06);}
 .btn.red:hover{background:rgba(255,59,59,0.15);}
 .btn.warn{border-color:var(--warning);color:var(--warning);background:rgba(255,170,0,0.06);}
+.btn.gold{border-color:var(--warning);color:var(--warning);background:rgba(255,170,0,0.06);}
+.btn.gold:hover{background:rgba(255,170,0,0.15);}
 
 /* STATS */
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
@@ -119,7 +154,7 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .le{padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
 .le.info{color:var(--accent);}.le.alert{color:var(--danger);}.le.ok{color:var(--safe);}.le.warn{color:var(--warning);}
 
-/* DATA STRUCTURE TABLES */
+/* DS TABLES */
 .ds-table{background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:4px;padding:6px;min-height:50px;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;font-family:'Share Tech Mono',monospace;}
 .ds-table::-webkit-scrollbar{width:3px;}
 .ds-table::-webkit-scrollbar-thumb{background:var(--border);}
@@ -170,7 +205,7 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 
 /* LOGIN */
 #login-overlay{position:fixed;inset:0;background:rgba(5,13,20,0.97);display:flex;align-items:center;justify-content:center;z-index:9000;backdrop-filter:blur(6px);}
-.lbox{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:30px;width:360px;display:flex;flex-direction:column;gap:12px;position:relative;}
+.lbox{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:30px;width:380px;display:flex;flex-direction:column;gap:12px;position:relative;}
 .lbox::before{content:'';position:absolute;top:0;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);border-radius:2px;}
 .ltitle{font-family:'Orbitron',monospace;font-size:16px;font-weight:900;color:var(--accent);letter-spacing:3px;text-align:center;text-shadow:var(--glow);}
 .lsub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:center;letter-spacing:2px;}
@@ -187,8 +222,8 @@ header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;ba
 .lerr{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--danger);text-align:center;display:none;}
 .lhint{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:center;opacity:.5;}
 label{font-size:10px;color:var(--dim);letter-spacing:1px;display:block;margin-bottom:3px;font-family:'Share Tech Mono',monospace;}
-input[type=text],input[type=password]{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;transition:border-color .2s;}
-input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
+input[type=text],input[type=password],input[type=email]{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;padding:7px 10px;border-radius:4px;outline:none;transition:border-color .2s;}
+input[type=text]:focus,input[type=password]:focus,input[type=email]:focus{border-color:var(--accent);}
 
 /* POPUP */
 .nexus-popup .leaflet-popup-content-wrapper{background:#0a1520;border:1px solid #1a3a50;border-radius:6px;box-shadow:0 0 20px rgba(0,229,255,0.2);color:#c8dce8;}
@@ -204,6 +239,51 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
 .loading-fill{height:100%;background:var(--accent);animation:fill 1.5s ease-in-out infinite;box-shadow:var(--glow);}
 @keyframes fill{0%{width:0%;}100%{width:100%;}}
 .loading-txt{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:2px;}
+
+/* SUPER ADMIN PANEL OVERLAY */
+#sa-panel{position:fixed;inset:0;background:rgba(5,13,20,0.97);display:none;align-items:center;justify-content:center;z-index:8500;backdrop-filter:blur(6px);}
+.sa-box{background:var(--panel);border:1px solid var(--warning);border-radius:10px;padding:28px;width:480px;max-height:80vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;position:relative;}
+.sa-box::before{content:'';position:absolute;top:0;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--warning),transparent);border-radius:2px;}
+.sa-title{font-family:'Orbitron',monospace;font-size:14px;font-weight:900;color:var(--warning);letter-spacing:3px;text-align:center;}
+.sa-sub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:center;letter-spacing:2px;}
+.sa-section{border:1px solid var(--border);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:9px;}
+.sa-section-title{font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--warning);}
+.sa-admin-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:4px;background:rgba(255,255,255,0.02);border:1px solid var(--border);font-size:11px;font-family:'Share Tech Mono',monospace;}
+.sa-admin-info{flex:1;min-width:0;}
+.sa-admin-name{font-weight:700;color:var(--text);font-size:11px;}
+.sa-admin-email{font-size:9px;color:var(--dim);}
+.sa-err{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--danger);text-align:center;display:none;}
+.sa-ok{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--safe);text-align:center;display:none;}
+.sa-box::-webkit-scrollbar{width:4px;}
+.sa-box::-webkit-scrollbar-thumb{background:var(--border);}
+
+/* CHAT */
+.chat-area { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.chat-area::-webkit-scrollbar { width: 4px; }
+.chat-area::-webkit-scrollbar-thumb { background: var(--border); }
+.chat-msg { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-family: 'Share Tech Mono', monospace; font-size: 11px; }
+.chat-msg.mine { background: rgba(0,229,255,0.05); border-color: rgba(0,229,255,0.2); }
+.chat-head { display: flex; justify-content: space-between; margin-bottom: 4px; color: var(--dim); font-size: 9px; }
+.chat-author { color: var(--text); font-weight: 700; opacity: 0.9; }
+.chat-text { color: var(--text); line-height: 1.4; word-wrap: break-word; }
+.chat-img { max-width: 100%; border-radius: 4px; margin-top: 6px; border: 1px solid var(--border); }
+.chat-input-bar { display: flex; gap: 6px; margin-top: 10px; flex-shrink: 0; }
+.chat-input { flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 12px; padding: 8px; border-radius: 4px; outline: none; }
+.chat-input:focus { border-color: var(--accent); }
+.btn-icon { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--accent); padding: 0 10px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all .2s; }
+.btn-icon:hover { background: rgba(0,229,255,0.1); border-color: var(--accent); }
+.history-btn { font-family: 'Share Tech Mono', monospace; font-size: 9px; padding: 6px; background: rgba(26,115,232,0.1); color: #7bb8ff; border: 1px solid #7bb8ff; cursor: pointer; border-radius: 3px; display: block; width: 100%; text-align: center; margin-top: 10px; transition: all .2s; }
+
+/* AI CHAT */
+.ai-msg { border-radius: 6px; padding: 9px 11px; font-size: 11px; line-height: 1.6; word-wrap: break-word; }
+.ai-msg.user { background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.2); color: var(--text); align-self: flex-end; font-family: 'Rajdhani', sans-serif; font-weight: 600; }
+.ai-msg.assistant { background: rgba(0,255,136,0.04); border: 1px solid rgba(0,255,136,0.15); color: var(--text); font-family: 'Share Tech Mono', monospace; font-size: 10px; }
+.ai-msg.thinking { background: rgba(255,170,0,0.05); border: 1px solid rgba(255,170,0,0.2); color: var(--warning); font-family: 'Share Tech Mono', monospace; font-size: 10px; animation: kpulse 1s infinite; }
+.ai-author { font-size: 8px; letter-spacing: 1px; margin-bottom: 4px; opacity: 0.6; }
+.ai-area { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.ai-area::-webkit-scrollbar { width: 4px; }
+.ai-area::-webkit-scrollbar-thumb { background: var(--border); }
+.history-btn:hover { background: rgba(26,115,232,0.2); }
 </style>
 </head>
 <body>
@@ -219,15 +299,14 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
 <div id="login-overlay" style="display:none;">
   <div class="lbox">
     <div class="ltitle">NEXUS RESCUE</div>
-    <div class="lsub">DISASTER ROUTE OPTIMIZER · GROUP 5</div>
+    <div class="lsub">DISASTER ROUTE OPTIMIZER · V3</div>
 
     <div class="lsection">
-      <div class="lsection-title" style="color:var(--accent);">🔐 ADMIN ACCESS</div>
-      <div><label>USERNAME</label><input type="text" id="lu" value="admin" placeholder="admin"/></div>
+      <div class="lsection-title" style="color:var(--accent);">🔐 ADMIN LOGIN</div>
+      <div><label>EMAIL</label><input type="email" id="lu" placeholder="admin@example.com"/></div>
       <div><label>PASSWORD</label><input type="password" id="lp" placeholder="••••••••"/></div>
       <div class="lerr" id="lerr">⚠ INVALID CREDENTIALS</div>
       <button class="lbtn admin" onclick="doLogin()">LOGIN AS ADMIN</button>
-      <div class="lhint">hint: admin / nexus123</div>
     </div>
 
     <div class="ldivider"><span>OR</span></div>
@@ -242,9 +321,36 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
   </div>
 </div>
 
+<!-- SUPER ADMIN PANEL -->
+<div id="sa-panel">
+  <div class="sa-box">
+    <div class="sa-title">⚡ SUPER ADMIN PANEL</div>
+    <div class="sa-sub">ADMIN MANAGEMENT · NRV3</div>
+
+    <div class="sa-section">
+      <div class="sa-section-title">➕ CREATE NEW ADMIN</div>
+      <div><label>DISPLAY NAME</label><input type="text" id="sa-name" placeholder="Admin Name"/></div>
+      <div><label>EMAIL</label><input type="email" id="sa-email" placeholder="admin@example.com"/></div>
+      <div><label>PASSWORD</label><input type="password" id="sa-pass" placeholder="min 6 characters"/></div>
+      <div class="sa-err" id="sa-err"></div>
+      <div class="sa-ok" id="sa-ok"></div>
+      <button class="btn gold" onclick="saCreateAdmin()">➕ CREATE ADMIN</button>
+    </div>
+
+    <div class="sa-section">
+      <div class="sa-section-title">👥 EXISTING ADMINS</div>
+      <div id="sa-admin-list" style="display:flex;flex-direction:column;gap:6px;">
+        <div style="color:var(--dim);font-family:'Share Tech Mono',monospace;font-size:10px;">Loading...</div>
+      </div>
+    </div>
+
+    <button class="btn" onclick="closeSAPanel()">✕ CLOSE PANEL</button>
+  </div>
+</div>
+
 <!-- HEADER -->
 <header>
-  <div class="logo">NEXUS <span>RESCUE</span> <span style="font-size:10px;color:yellow;margin-left:10px;">v2.0 MANUAL MODE</span></div>
+  <div class="logo">NEXUS <span>RESCUE</span> <span style="font-size:10px;color:yellow;margin-left:10px;">V3</span></div>
   <div style="display:flex;align-items:center;gap:14px;">
     <div class="status-pill">
       <div class="pulse" id="sys-dot"></div>
@@ -255,6 +361,8 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
       <span id="sync-label">SYNCING</span>
     </div>
     <div class="role-badge admin" id="role-badge">ADMIN</div>
+    <button id="sa-btn" onclick="openSAPanel()" style="display:none;background:rgba(255,170,0,0.1);border:1px solid var(--warning);color:var(--warning);font-family:'Share Tech Mono',monospace;font-size:9px;padding:3px 10px;border-radius:3px;cursor:pointer;letter-spacing:1px;">⚡ CONTROL</button>
+    <button id="logout-btn" onclick="doLogout()" style="display:none;background:rgba(255,59,59,0.1);border:1px solid var(--danger);color:var(--danger);font-family:'Share Tech Mono',monospace;font-size:9px;padding:3px 10px;border-radius:3px;cursor:pointer;letter-spacing:1px;">LOGOUT</button>
   </div>
 </header>
 
@@ -270,6 +378,8 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
       <div class="stabs">
         <button class="stab active" onclick="openTab('tc')">CONTROL</button>
         <button class="stab" onclick="openTab('tt')">TEAMS</button>
+        <button class="stab" onclick="openTab('tch')">CHAT</button>
+        <button class="stab" onclick="openTab('tai')">AGENT</button>
         <button class="stab" onclick="openTab('tl')">LOG</button>
       </div>
 
@@ -296,18 +406,31 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
           </div>
         </div>
 
+        <div class="card" id="auto-deploy-card" style="display:none;">
+          <div class="ctitle">⚡ AUTO DEPLOYMENT MODE</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);line-height:1.6;">
+              Auto-assign nearest available team to each disaster.
+            </div>
+            <div onclick="toggleAutoMode()" id="auto-toggle" style="cursor:pointer;width:44px;height:24px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);position:relative;transition:all .3s;flex-shrink:0;">
+              <div id="auto-knob" style="position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--dim);transition:all .3s;"></div>
+            </div>
+          </div>
+          <div id="auto-status" style="font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:center;margin-top:4px;">STATUS: OFF</div>
+        </div>
+
         <div class="card">
           <div class="ctitle">⚡ ACTIONS</div>
           <div style="display:flex;flex-direction:column;gap:6px;">
-            <button class="btn red" onclick="clearAllDisasters()">🗑 CLEAR ALL DISASTERS</button>
-            <button class="btn red" onclick="clearAllRoutes()">🗑 CLEAR ALL ROUTES</button>
-            <button class="btn warn" onclick="clearAllBlocks()">🚧 CLEAR BLOCKED ROADS</button>
-            <button class="btn" onclick="resetAll()">↺ RESET ALL</button>
+            <button class="btn red" onclick="clearMyDisasters()">🗑 CLEAR MY DISASTERS</button>
+            <button class="btn red" onclick="clearMyRoutes()">🗑 CLEAR MY ROUTES</button>
+            <button class="btn warn" onclick="clearMyBlocks()">🚧 CLEAR MY BLOCKS</button>
+            <button class="btn" onclick="clearMyTeams()">↺ CLEAR MY TEAMS</button>
           </div>
         </div>
 
         <div class="card" id="disaster-list-card" style="display:none;">
-          <div class="ctitle">📍 ACTIVE DISASTERS</div>
+          <div class="ctitle">📍 MY ACTIVE DISASTERS</div>
           <div id="disaster-list" style="display:flex;flex-direction:column;gap:5px;"></div>
         </div>
 
@@ -317,23 +440,57 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
         </div>
 
         <div class="card" id="blocked-card" style="display:none;">
-          <div class="ctitle">🚧 BLOCKED ROADS</div>
+          <div class="ctitle">🚧 MY BLOCKED ROADS</div>
           <div id="blocked-list" style="display:flex;flex-direction:column;gap:5px;"></div>
         </div>
       </div>
 
       <div class="tcontent" id="tt">
-        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);">RESCUE TEAMS</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);">MY RESCUE TEAMS</div>
         <div id="team-list" style="display:flex;flex-direction:column;gap:5px;"></div>
       </div>
 
+      <div class="tcontent" id="tch" style="padding-bottom:12px;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:5px;flex-shrink:0;">SECURE ADMIN CHANNEL</div>
+        <div class="chat-area" id="chat-messages">
+          <div style="color:var(--dim);font-size:10px;text-align:center;">No messages...</div>
+        </div>
+        <div class="chat-input-bar">
+          <input type="text" class="chat-input" id="chat-inp" placeholder="Type message..." onkeydown="if(event.key==='Enter') sendChat()"/>
+          <label class="btn-icon" title="Upload Image" style="cursor:pointer;">
+            🖼
+            <input type="file" id="chat-img-inp" accept="image/*" style="display:none;" onchange="sendChatImage(this)"/>
+          </label>
+          <button class="btn-icon" onclick="sendChat()">➤</button>
+        </div>
+      </div>
+
+      <div class="tcontent" id="tai" style="padding-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:5px;flex-shrink:0;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--safe);">⚡ NEXUS AI AGENT</div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);">LIVE DATA AWARE</div>
+        </div>
+        <div class="ai-area" id="ai-messages">
+          <div class="ai-msg assistant">
+            <div class="ai-author">NEXUS AI ⚡</div>
+            NEXUS AI online. I have real-time access to all active disasters, team deployments, road blocks, and historical data. Ask me anything about the current situation.
+          </div>
+        </div>
+        <div class="chat-input-bar">
+          <input type="text" class="chat-input" id="ai-inp" placeholder="Ask NEXUS AI..." onkeydown="if(event.key==='Enter') sendAI()"/>
+          <button class="btn-icon" onclick="sendAI()">➤</button>
+        </div>
+      </div>
+
       <div class="tcontent" id="tl">
-        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);">SYSTEM LOG</div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);">LIVE ACTION FEED</div>
         <div class="log" id="sys-log"></div>
-        <button class="btn" style="margin-top:4px;" onclick="document.getElementById('sys-log').innerHTML=''">🗑 CLEAR LOG</button>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);margin-top:10px;">PENDING: STACK (EMERGENCY)</div>
-        <div class="ds-table" id="ds-stack"></div>
-        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);margin-top:10px;">PENDING: PRIORITY QUEUE (H/M/L)</div>
+        <button class="btn" style="margin-top:4px;" onclick="document.getElementById('sys-log').innerHTML=''">🗑 CLEAR FEED</button>
+        
+        <button class="history-btn" id="hist-btn" onclick="fetchPermanentHistory()">📂 FETCH PERMANENT HISTORY (DB)</button>
+        <div class="ds-table" id="db-history" style="display:none; max-height:200px; margin-top:6px;"></div>
+
+        <div style="font-family:'Share Tech Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);margin-top:10px;">PENDING: PRIORITY QUEUE</div>
         <div class="ds-table" id="ds-pq"></div>
       </div>
     </div>
@@ -373,16 +530,12 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);}
 /* ══════════════════════════════════════════
  *  CONFIG
  * ══════════════════════════════════════════ */
-const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjRmNzFmOGNhZGE3NjRkZjhiZTZiMzg0MzNkMDAxNGQ1IiwiaCI6Im11cm11cjY0In0=';
-const ORS_URL = 'https://api.openrouteservice.org/v2/directions/driving-car/geojson';
+const ORS_KEY = ''; // Key is now hidden in Cloudflare Worker
+const ORS_URL    = 'https://royal-pond-5009.hossainsmsayem.workers.dev/route';
+const CF_API_URL = 'https://royal-pond-5009.hossainsmsayem.workers.dev';
+const SUPER_ADMIN_UID = 'y8a2gUU79HVGNc60udoqPRppFMx1';
 
 const TEAM_COLORS = ['#00e5ff','#ff6ec7','#ffe066','#00ff88','#bf5fff','#ff9944'];
-const INITIAL_TEAMS = [
-  {id:'alpha', name:'Alpha Team', lat:23.8041, lng:90.3664},
-  {id:'bravo', name:'Bravo Team', lat:23.7591, lng:90.3897},
-  {id:'delta', name:'Delta Team', lat:23.7806, lng:90.4152},
-  {id:'echo',  name:'Echo Team',  lat:23.7330, lng:90.4178},
-];
 const PRIORITY = {
   emergency:{label:'EMERGENCY',color:'#ff3b3b',icon:'🔴',order:0},
   high:     {label:'HIGH',     color:'#ff8c00',icon:'🟠',order:1},
@@ -391,23 +544,24 @@ const PRIORITY = {
 };
 
 /* ══════════════════════════════════════════
- *  STATE  (local render state only)
+ *  STATE
  * ══════════════════════════════════════════ */
 const S = {
   isAdmin:   false,
+  isSA:      false,
+  uid:       null,
   mode:      'disaster',
   priority:  'emergency',
-  // local marker/layer cache keyed by Firebase id
-  teamMarkers:    {}, // id → {marker, color}
-  disMarkers:     {}, // id → {marker, routeLayers}
-  blockLayers:    {}, // id → {line, m1, m2}
-  // raw Firebase data
-  fbTeams:     {},
-  fbDisasters: {},
-  fbBlocks:    {},
-  // block picking
+  isRouting: false,
+  autoMode:  false,
+  teamMarkers:  {},
+  disMarkers:   {},
+  blockLayers:  {},
+  fbTeams:      {},
+  fbDisasters:  {},
+  fbBlocks:     {},
+  fbAdmins:     {},
   blkPt1: null, blkMark: null,
-  // routing animation timers
   animTimers: [],
 };
 
@@ -453,32 +607,131 @@ function disasterIcon(p) {
 }
 
 /* ══════════════════════════════════════════
- *  LOGIN
+ *  AUTH — LOGIN / LOGOUT
  * ══════════════════════════════════════════ */
-function doLogin() {
-  if (document.getElementById('lu').value==='admin' && document.getElementById('lp').value==='nexus123') {
-    S.isAdmin = true;
-    document.getElementById('login-overlay').style.display  = 'none';
-    document.getElementById('admin-sidebar').style.display  = 'flex';
-    document.getElementById('public-sidebar').style.display = 'none';
-    document.getElementById('role-badge').textContent = 'ADMIN';
-    document.getElementById('role-badge').className   = 'role-badge admin';
-    setMode('disaster');
-    log('Admin authenticated.','ok');
-  } else {
-    document.getElementById('lerr').style.display='block';
+async function doLogin() {
+  const email = document.getElementById('lu').value.trim();
+  const pass  = document.getElementById('lp').value;
+  document.getElementById('lerr').style.display = 'none';
+  try {
+    await window._auth.login(email, pass);
+    // onAuthStateChanged will handle the rest
+  } catch(e) {
+    document.getElementById('lerr').style.display = 'block';
   }
 }
+
 function enterPublic() {
-  S.isAdmin = false;
+  S.isAdmin = false; S.isSA = false; S.uid = null;
   document.getElementById('login-overlay').style.display  = 'none';
   document.getElementById('admin-sidebar').style.display  = 'none';
   document.getElementById('public-sidebar').style.display = 'flex';
   document.getElementById('role-badge').textContent = 'PUBLIC';
   document.getElementById('role-badge').className   = 'role-badge public';
+  document.getElementById('logout-btn').style.display = 'none';
+  document.getElementById('sa-btn').style.display    = 'none';
   setHint('👁 Public view — click a team marker for details', false);
 }
+
+async function doLogout() {
+  await window._auth.logout();
+  S.isAdmin = false; S.isSA = false; S.uid = null;
+  document.getElementById('admin-sidebar').style.display  = 'none';
+  document.getElementById('public-sidebar').style.display = 'none';
+  document.getElementById('login-overlay').style.display  = 'flex';
+  document.getElementById('logout-btn').style.display     = 'none';
+  document.getElementById('sa-btn').style.display         = 'none';
+  document.getElementById('role-badge').textContent = 'ADMIN';
+  document.getElementById('role-badge').className   = 'role-badge admin';
+  document.getElementById('lu').value = '';
+  document.getElementById('lp').value = '';
+}
+
 document.getElementById('lp').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+/* ══════════════════════════════════════════
+ *  SUPER ADMIN PANEL
+ * ══════════════════════════════════════════ */
+function openSAPanel() {
+  document.getElementById('sa-panel').style.display = 'flex';
+  renderSAAdminList();
+}
+function closeSAPanel() {
+  document.getElementById('sa-panel').style.display = 'none';
+  document.getElementById('sa-err').style.display = 'none';
+  document.getElementById('sa-ok').style.display  = 'none';
+  document.getElementById('sa-name').value  = '';
+  document.getElementById('sa-email').value = '';
+  document.getElementById('sa-pass').value  = '';
+}
+
+async function saCreateAdmin() {
+  const name  = document.getElementById('sa-name').value.trim();
+  const email = document.getElementById('sa-email').value.trim();
+  const pass  = document.getElementById('sa-pass').value;
+  const errEl = document.getElementById('sa-err');
+  const okEl  = document.getElementById('sa-ok');
+  errEl.style.display = 'none';
+  okEl.style.display  = 'none';
+
+  if (!name || !email || !pass) {
+    errEl.textContent = '⚠ All fields required.';
+    errEl.style.display = 'block'; return;
+  }
+  if (pass.length < 6) {
+    errEl.textContent = '⚠ Password min 6 characters.';
+    errEl.style.display = 'block'; return;
+  }
+
+  try {
+    const cred = await window._auth.createAdmin(email, pass);
+    await window._db.setAdminMeta(cred.user.uid, {
+      uid: cred.user.uid,
+      displayName: name,
+      email: email,
+      createdAt: Date.now(),
+    });
+    okEl.textContent = `✓ Admin "${name}" created successfully.`;
+    okEl.style.display = 'block';
+    document.getElementById('sa-name').value  = '';
+    document.getElementById('sa-email').value = '';
+    document.getElementById('sa-pass').value  = '';
+    log(`Super Admin created new admin: ${name}`, 'ok');
+    renderSAAdminList();
+  } catch(e) {
+    errEl.textContent = `⚠ ${e.message}`;
+    errEl.style.display = 'block';
+  }
+}
+
+async function saDeleteAdmin(uid, name) {
+  if (!confirm(`Delete admin "${name}"? All their data will remain but they cannot login.`)) return;
+  try {
+    await window._db.removeAdminMeta(uid);
+    log(`Admin "${name}" removed.`, 'warn');
+    renderSAAdminList();
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+function renderSAAdminList() {
+  const el = document.getElementById('sa-admin-list');
+  const admins = Object.values(S.fbAdmins).filter(a => a.uid !== SUPER_ADMIN_UID);
+  if (!admins.length) {
+    el.innerHTML = '<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;">No admins created yet.</div>';
+    return;
+  }
+  el.innerHTML = admins.map(a => `
+    <div class="sa-admin-item">
+      <div class="sa-admin-info">
+        <div class="sa-admin-name">${a.displayName}</div>
+        <div class="sa-admin-email">${a.email}</div>
+      </div>
+      <button class="icon-btn del" onclick="saDeleteAdmin('${a.uid}','${a.displayName}')">✕ DELETE</button>
+    </div>
+  `).join('');
+}
 
 /* ══════════════════════════════════════════
  *  TABS / MODE / PRIORITY
@@ -487,7 +740,7 @@ function openTab(id) {
   document.querySelectorAll('.tcontent').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.stab').forEach(t=>t.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  ['tc','tt','tl'].forEach((t,i)=>{ if(t===id) document.querySelectorAll('.stab')[i].classList.add('active'); });
+  ['tc','tt','tch','tai','tl'].forEach((t,i)=>{ if(t===id) document.querySelectorAll('.stab')[i].classList.add('active'); });
 }
 function setMode(m) {
   S.mode = m;
@@ -518,69 +771,387 @@ function showHint(msg) {
  *  LOG
  * ══════════════════════════════════════════ */
 function log(msg,type='info') {
-  const el=document.getElementById('sys-log'), now=new Date();
+  const el=document.getElementById('sys-log'); if(!el) return;
+  const now=new Date();
   const ts=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   const d=document.createElement('div'); d.className=`le ${type}`; d.textContent=`[${ts}] ${msg}`; el.prepend(d);
 }
 
 /* ══════════════════════════════════════════
- *  FIREBASE — TEAMS
+ *  OWNERSHIP HELPERS
  * ══════════════════════════════════════════ */
+function isMine(item) {
+  if (!item) return false;
+  if (S.isSA) return true; // super admin can touch everything
+  return item.ownerUid === S.uid;
+}
+
+/* ══════════════════════════════════════════
+ *  AUTO DEPLOY MODE (Super Admin only)
+ * ══════════════════════════════════════════ */
+function toggleAutoMode() {
+  if (!S.isSA) return;
+  S.autoMode = !S.autoMode;
+  window._db.setAutoMode(S.autoMode); // persist to Firebase
+  updateAutoModeUI();
+  log(`Auto Deploy Mode: ${S.autoMode ? 'ON' : 'OFF'}`, S.autoMode ? 'ok' : 'warn');
+}
+
+function updateAutoModeUI() {
+  const toggle = document.getElementById('auto-toggle');
+  const knob   = document.getElementById('auto-knob');
+  const status = document.getElementById('auto-status');
+  if (!toggle) return;
+  if (S.autoMode) {
+    toggle.style.background = 'rgba(0,255,136,0.15)';
+    toggle.style.borderColor = 'var(--safe)';
+    knob.style.left = '23px';
+    knob.style.background = 'var(--safe)';
+    status.textContent = 'STATUS: ON — Auto assigning teams';
+    status.style.color = 'var(--safe)';
+  } else {
+    toggle.style.background = 'rgba(255,255,255,0.05)';
+    toggle.style.borderColor = 'var(--border)';
+    knob.style.left = '3px';
+    knob.style.background = 'var(--dim)';
+    status.textContent = 'STATUS: OFF';
+    status.style.color = 'var(--dim)';
+  }
+}
+
+// Haversine distance in km
+function distKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+            Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Find nearest available team to a disaster and assign
+async function autoAssignToDisaster(dis) {
+  if (!S.autoMode) return;
+  const availableTeams = Object.values(S.fbTeams).filter(t => t.available !== false);
+  if (!availableTeams.length) { log('Auto: No available teams.', 'warn'); return; }
+
+  let nearest = null, minDist = Infinity;
+  for (const t of availableTeams) {
+    const d = distKm(t.lat, t.lng, dis.lat, dis.lng);
+    if (d < minDist) { minDist = d; nearest = t; }
+  }
+  if (!nearest) return;
+
+  let route = await fetchRoute(nearest.lat, nearest.lng, dis.lat, dis.lng);
+  if (!route) {
+    const m = minDist * 1000;
+    route = { distance: m, duration: Math.round((m/1000)/40*60)*60, coords: [[nearest.lat, nearest.lng],[dis.lat, dis.lng]] };
+  }
+  const km  = (route.distance/1000).toFixed(2);
+  const min = Math.round(route.duration/60);
+  await window._db.setDisaster(dis.id, {...dis, assignedTeam: nearest.id, route: {coords: route.coords, km, min}});
+  await window._db.setTeam(nearest.id, {...nearest, available: false});
+  log(`Auto: ${nearest.name} → ${PRIORITY[dis.priority].label} disaster (${km}km)`, 'ok');
+  showHint(`⚡ Auto assigned ${nearest.name} to disaster.`);
+}
+
+// Find nearest unassigned disaster to a team and assign
+async function autoAssignToTeam(team) {
+  if (!S.autoMode) return;
+  const unassigned = Object.values(S.fbDisasters).filter(d => !d.assignedTeam);
+  if (!unassigned.length) return;
+
+  const sorted = unassigned.sort((a, b) => {
+    if (PRIORITY[a.priority].order !== PRIORITY[b.priority].order)
+      return PRIORITY[a.priority].order - PRIORITY[b.priority].order;
+    return distKm(team.lat, team.lng, a.lat, a.lng) - distKm(team.lat, team.lng, b.lat, b.lng);
+  });
+  const best = sorted[0];
+
+  let route = await fetchRoute(team.lat, team.lng, best.lat, best.lng);
+  if (!route) {
+    const m = distKm(team.lat, team.lng, best.lat, best.lng) * 1000;
+    route = { distance: m, duration: Math.round((m/1000)/40*60)*60, coords: [[team.lat, team.lng],[best.lat, best.lng]] };
+  }
+  const km  = (route.distance/1000).toFixed(2);
+  const min = Math.round(route.duration/60);
+  await window._db.setDisaster(best.id, {...best, assignedTeam: team.id, route: {coords: route.coords, km, min}});
+  await window._db.setTeam(team.id, {...team, available: false});
+  log(`Auto: ${team.name} → ${PRIORITY[best.priority].label} disaster (${km}km)`, 'ok');
+  showHint(`⚡ Auto assigned ${team.name} to nearest disaster.`);
+}
+
+/* ══════════════════════════════════════════
+ *  CLOUDFLARE SYNC LOGIC
+ * ══════════════════════════════════════════ */
+async function logToCloudflare(event_type, action, refId, details) {
+  try {
+    const adminObj = S.fbAdmins[S.uid] || {};
+    const id = 'log_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+    await fetch(`${CF_API_URL}/log`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        id,
+        event_type: `${event_type}_${action}`,
+        admin_id:   S.uid,
+        admin_name: adminObj.displayName || 'Unknown',
+        details:    JSON.stringify(details),
+        lat:        details.lat || null,
+        lng:        details.lng || null,
+        timestamp:  Date.now(),
+      })
+    });
+  } catch(e) { console.error("CF log failed", e); }
+}
+
+async function fetchPermanentHistory() {
+  const el = document.getElementById('db-history');
+  el.style.display = el.style.display==='none' ? 'flex' : 'none';
+  if (el.style.display==='none') return;
+  el.innerHTML = '<div class="ds-empty">Fetching from database...</div>';
+  try {
+    const res = await fetch(`${CF_API_URL}/logs?limit=100`);
+    if(!res.ok) throw new Error("API error");
+    const data = await res.json();
+    if(!data.length) { el.innerHTML = '<div class="ds-empty">No history found.</div>'; return; }
+    el.innerHTML = data.map(entry => {
+      const d  = new Date(entry.timestamp);
+      const ts = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      let color = 'var(--dim)';
+      if (entry.event_type.includes('CREATED')) color = 'var(--safe)';
+      else if (entry.event_type.includes('DELETED')) color = 'var(--danger)';
+      else if (entry.event_type.includes('RESCUED')) color = 'var(--warning)';
+      return `<div class="ds-item" style="flex-direction:column;align-items:flex-start;gap:2px;">
+        <div style="width:100%;display:flex;justify-content:space-between;">
+          <b style="color:${color};">${entry.event_type}</b>
+          <span style="font-size:8px;color:var(--dim);">${ts}</span>
+        </div>
+        <div style="font-size:9px;color:var(--dim);">By: ${entry.admin_name}</div>
+        ${entry.details ? `<div style="font-size:8px;color:var(--dim);opacity:.7;">${entry.details}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="ds-empty" style="color:var(--danger);">Failed to load. Check Worker.</div>`;
+  }
+}
+
+/* ══════════════════════════════════════════
+ *  CHAT LOGIC
+ * ══════════════════════════════════════════ */
+async function sendChat() {
+  const text = document.getElementById('chat-inp').value.trim();
+  if(!text) return;
+  await processSendChat(text, null);
+  document.getElementById('chat-inp').value = '';
+}
+
+async function sendChatImage(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const oldHint = document.getElementById('hint-bar').textContent;
+  setHint("Uploading image...", true);
+  try {
+    const name = `chat_${Date.now()}_${file.name}`;
+    const fileRef = sRef(storage, `chat_images/${name}`);
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+    await processSendChat("", url);
+    setHint("Image sent!", true);
+  } catch(e) {
+    alert("Image upload failed: " + e.message);
+  }
+  input.value = "";
+  setTimeout(()=>setHint(oldHint, true), 2000);
+}
+
+async function processSendChat(text, imgUrl) {
+  const id = `msg_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+  const ts = Date.now();
+  const d = new Date(ts);
+  const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const timeStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  const adminObj = S.fbAdmins[S.uid] || {};
+  const adminName = adminObj.displayName || 'Unknown';
+
+  const payload = {
+    id,
+    admin_id:   S.uid,
+    admin_name: adminName,
+    text:       text||"",
+    image_url:  imgUrl||"",
+    date:       dateStr,
+    time:       timeStr,
+    timestamp:  ts
+  };
+
+  // Firebase — realtime
+  await window._db.setChat(id, payload);
+
+  // D1 — permanent
+  try {
+    await fetch(`${CF_API_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch(e) { console.error('D1 chat save failed', e); }
+}
+
+function renderChat(data) {
+  const msgs = Object.values(data||{}).sort((a,b)=>a.timestamp-b.timestamp);
+  const ca = document.getElementById('chat-messages');
+  if(!ca)return;
+  if(msgs.length===0) { ca.innerHTML = '<div style="color:var(--dim);font-size:10px;text-align:center;">No messages...</div>'; return; }
+  
+  ca.innerHTML = msgs.map(m => {
+    const mine = m.admin_id === S.uid;
+    const adminObj = S.fbAdmins[m.admin_id] || {displayName: "Unknown Admin"};
+    return `<div class="chat-msg ${mine?'mine':''}">
+      <div class="chat-head">
+        <span class="chat-author">${adminObj.displayName}</span>
+        <span>${m.time.substring(0,5)}</span>
+      </div>
+      ${m.text ? `<div class="chat-text">${m.text}</div>` : ''}
+      ${m.image_url ? `<a href="${m.image_url}" target="_blank"><img class="chat-img" src="${m.image_url}"/></a>` : ''}
+    </div>`;
+  }).join('');
+  ca.scrollTop = ca.scrollHeight;
+}
+
+/* ══════════════════════════════════════════
+ *  AI AGENT
+ * ══════════════════════════════════════════ */
+const AI_HISTORY = []; // conversation memory
+
+async function sendAI() {
+  const inp = document.getElementById('ai-inp');
+  const question = inp.value.trim();
+  if (!question) return;
+  inp.value = '';
+
+  const area = document.getElementById('ai-messages');
+
+  // Add user message to UI
+  area.innerHTML += `<div class="ai-msg user">
+    <div class="ai-author">${S.fbAdmins[S.uid]?.displayName || 'You'}</div>
+    ${question}
+  </div>`;
+
+  // Add thinking indicator
+  const thinkId = 'think_' + Date.now();
+  area.innerHTML += `<div class="ai-msg thinking" id="${thinkId}">
+    <div class="ai-author">NEXUS AI</div>
+    ⏳ Searching & analyzing...
+  </div>`;
+  area.scrollTop = area.scrollHeight;
+
+  // Add to history
+  AI_HISTORY.push({ role: 'user', content: question });
+
+  try {
+    const res = await fetch(`${CF_API_URL}/ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        disasters:    S.fbDisasters,
+        teams:        S.fbTeams,
+        blocks:       S.fbBlocks,
+        admins:       S.fbAdmins,
+        adminName:    S.fbAdmins[S.uid]?.displayName || 'Admin',
+        isSuperAdmin: S.isSA,
+        history:      AI_HISTORY.slice(-10), // last 10 messages for memory
+      })
+    });
+
+    const data = await res.json();
+    const answer = data.answer || 'No response received.';
+
+    // Add AI response to history
+    AI_HISTORY.push({ role: 'assistant', content: answer });
+
+    // Remove thinking indicator
+    document.getElementById(thinkId)?.remove();
+
+    // Add AI response — format newlines
+    const formatted = answer.replace(/\n/g, '<br>');
+    area.innerHTML += `<div class="ai-msg assistant">
+      <div class="ai-author">NEXUS AI ⚡</div>
+      ${formatted}
+    </div>`;
+  } catch(e) {
+    AI_HISTORY.pop(); // remove failed user message from history
+    document.getElementById(thinkId)?.remove();
+    area.innerHTML += `<div class="ai-msg assistant" style="border-color:rgba(255,59,59,0.3);">
+      <div class="ai-author">NEXUS AI</div>
+      ⚠ Connection error. Check Worker.
+    </div>`;
+  }
+
+  area.scrollTop = area.scrollHeight;
+}
 async function fbAddTeam(lat, lng) {
   const id    = 'team_' + Date.now() + '_' + Math.floor(Math.random()*1000);
   const color = TEAM_COLORS[Object.keys(S.fbTeams).length % TEAM_COLORS.length];
   const name  = `Team ${Object.keys(S.fbTeams).length + 1}`;
-  await window._db.setTeam(id, {id, name, lat, lng, color, available:true});
+  await window._db.setTeam(id, {id, name, lat, lng, color, available:true, ownerUid: S.uid});
   log(`${name} deployed.`,'ok');
-  S.fbTeams[id] = {id, name, lat, lng, color, available:true};
-  updateAllUI();
+  logToCloudflare('TEAM', 'CREATED', id, {lat, lng, name});
+  if (S.autoMode) await autoAssignToTeam({id, name, lat, lng, color, available:true, ownerUid:S.uid});
 }
 
 function renderTeams(data) {
   S.fbTeams = data || {};
-
-  // Remove markers not in DB
   Object.keys(S.teamMarkers).forEach(id => {
     if (!S.fbTeams[id]) { map.removeLayer(S.teamMarkers[id].marker); delete S.teamMarkers[id]; }
   });
-
-  // Add/update markers
   Object.values(S.fbTeams).forEach(t => {
     const onMission = t.available === false;
     if (!S.teamMarkers[t.id]) {
-      const marker = L.marker([t.lat, t.lng], {
-        icon: teamIcon(t.color, t.name, onMission),
-        draggable: false,
-      }).addTo(map);
+      const marker = L.marker([t.lat, t.lng], {icon: teamIcon(t.color, t.name, onMission), draggable:false}).addTo(map);
       marker.on('click', () => showTeamPopup(t.id));
       S.teamMarkers[t.id] = {marker, color:t.color};
     } else {
       S.teamMarkers[t.id].marker.setIcon(teamIcon(t.color, t.name, onMission));
     }
   });
-
   updateAllUI();
 }
 
 async function fbRenameTeam(id, newName) {
-  const t = S.fbTeams[id]; if(!t) return;
-  const old = t.name;
+  const t = S.fbTeams[id]; if(!t || !isMine(t)) return;
   await window._db.setTeam(id, {...t, name:newName});
-  log(`Renamed: "${old}" → "${newName}"`,'ok');
+  log(`Renamed to "${newName}"`, 'ok');
 }
 async function fbDeleteTeam(id) {
-  const t = S.fbTeams[id]; if(!t) return;
-  // Free disasters assigned to this team
+  const t = S.fbTeams[id]; if(!t || !isMine(t)) return;
   for (const d of Object.values(S.fbDisasters)) {
-    if (d.assignedTeam===id) {
-      await window._db.setDisaster(d.id, {...d, assignedTeam:null, route:null});
-      d.assignedTeam = null; d.route = null;
-    }
+    if (d.assignedTeam===id) await window._db.setDisaster(d.id, {...d, assignedTeam:null, route:null});
   }
   await window._db.removeTeam(id);
-  delete S.fbTeams[id];
   log(`${t.name} removed.`,'warn');
-  updateAllUI();
+  logToCloudflare('TEAM', 'DELETED', id, {name: t.name});
+}
+function startMoveTeam(id) {
+  const t = S.fbTeams[id]; if(!t || !isMine(t)) return;
+  showHint(`📍 Click on map to set new location for ${t.name}`);
+  map.once('click', async e => {
+    await window._db.setTeam(id, {...t, lat:e.latlng.lat, lng:e.latlng.lng});
+    log(`${t.name} moved.`,'ok');
+    showHint(`✓ ${t.name} location updated.`);
+  });
+}
+function startRename(id) {
+  const t=S.fbTeams[id]; if(!t || !isMine(t)) return;
+  const el=document.getElementById(`tn-${id}`); if(!el) return;
+  const old=t.name;
+  el.innerHTML=`<input class="name-input" id="ni-${id}" value="${old}" maxlength="20"/>`;
+  const inp=document.getElementById(`ni-${id}`); inp.focus(); inp.select();
+  const save=()=>{ const v=inp.value.trim(); if(v&&v!==old) fbRenameTeam(id,v); else updateAllUI(); };
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); if(e.key==='Escape') updateAllUI(); });
+  inp.addEventListener('blur', save);
 }
 
 /* ══════════════════════════════════════════
@@ -590,20 +1161,15 @@ async function fbAddDisaster(lat, lng) {
   const id  = 'dis_' + Date.now() + '_' + Math.floor(Math.random()*10000);
   const p   = S.priority;
   const cfg = PRIORITY[p];
-
-  await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:null, route:null});
-  S.fbDisasters[id] = {id, lat, lng, priority:p, assignedTeam:null, route:null};
-  
-  log(`${cfg.icon} [${cfg.label}] Pushed to ${p==='emergency'?'Stack':'Priority Queue'}`,'alert');
-  showHint(`☑ Added to ${p==='emergency'?'Stack':'Queue'}. Awaiting team assignment.`);
-  
-  updateAllUI(); // Visually push to Stack/Queue immediately
+  await window._db.setDisaster(id, {id, lat, lng, priority:p, assignedTeam:null, route:null, ownerUid: S.uid});
+  log(`${cfg.icon} [${cfg.label}] Pushed to Priority Queue`,'alert');
+  showHint(`☑ Added to Priority Queue. Awaiting team assignment.`);
+  logToCloudflare('DISASTER', 'CREATED', id, {lat, lng, priority:p});
+  if (S.autoMode) await autoAssignToDisaster({id, lat, lng, priority:p, assignedTeam:null, route:null, ownerUid:S.uid});
 }
 
 function renderDisasters(data) {
   S.fbDisasters = data || {};
-
-  // Remove markers not in DB
   Object.keys(S.disMarkers).forEach(id => {
     if (!S.fbDisasters[id]) {
       map.removeLayer(S.disMarkers[id].marker);
@@ -611,8 +1177,6 @@ function renderDisasters(data) {
       delete S.disMarkers[id];
     }
   });
-
-  // Add/update
   Object.values(S.fbDisasters).forEach(d => {
     if (!S.disMarkers[d.id]) {
       const marker = L.marker([d.lat,d.lng], {icon:disasterIcon(d.priority)}).addTo(map);
@@ -628,97 +1192,74 @@ function renderDisasters(data) {
       }
     }
   });
-
   updateAllUI();
 }
 
 async function fbClearDisaster(id) {
-  const d = S.fbDisasters[id]; if(!d) return;
-  if (d.assignedTeam) {
-    await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
-    S.fbTeams[d.assignedTeam].available = true;
-  }
+  const d = S.fbDisasters[id]; if(!d || !isMine(d)) return;
+  if (d.assignedTeam) await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
   await window._db.removeDisaster(id);
-  delete S.fbDisasters[id];
   log(`Disaster cleared. Team released.`,'ok');
-  updateAllUI();
+  logToCloudflare('DISASTER', 'DELETED', id, {});
 }
-
 async function fbRescueDisaster(id) {
-  const d = S.fbDisasters[id]; if(!d) return;
-  if (d.assignedTeam) {
-    await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
-    S.fbTeams[d.assignedTeam].available = true;
-  }
+  const d = S.fbDisasters[id]; if(!d || !isMine(d)) return;
+  if (d.assignedTeam) await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
   await window._db.removeDisaster(id);
-  delete S.fbDisasters[id];
   log(`✓ Rescue complete. Team released.`,'ok');
   showHint('✓ Rescue marked complete. Team is now available.');
-  updateAllUI();
+  logToCloudflare('DISASTER', 'RESCUED', id, {});
 }
 
 async function fbReassignTeam(tid) {
   if (S.isRouting) { showHint('⏳ System busy, please wait.'); return; }
   S.isRouting = true;
   try {
-    const t = S.fbTeams[tid]; if(!t || t.available===false) return;
-    const unassigned = Object.values(S.fbDisasters).filter(d => !d.assignedTeam);
-    if (!unassigned.length) { 
-      showHint('No unassigned disasters found.'); 
-      log('Assign clicked, but no unassigned disasters available.', 'warn');
-      return; 
-    }
+    const t = S.fbTeams[tid]; if(!t || t.available===false || !isMine(t)) return;
+    // only my unassigned disasters
+    const unassigned = Object.values(S.fbDisasters).filter(d => !d.assignedTeam && isMine(d));
+    if (!unassigned.length) { showHint('No unassigned disasters found.'); log('No unassigned disasters.','warn'); return; }
 
-    const emergencyStack = unassigned.filter(d => d.priority === 'emergency');
-    emergencyStack.sort((a,b) => b.id.localeCompare(a.id)); // LIFO Top
-
-    const restPQ = unassigned.filter(d => d.priority !== 'emergency');
-    restPQ.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order); // Priority Top
-
-    const orderToProcess = [...emergencyStack, ...restPQ];
-    const best = orderToProcess[0]; // STRICTLY POP FROM DATA STRUCTURE TOP
+    const emergencyStack = unassigned.filter(d => d.priority==='emergency').sort((a,b)=>b.id.localeCompare(a.id));
+    const restPQ = unassigned.filter(d => d.priority!=='emergency').sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
+    const best = [...emergencyStack,...restPQ][0];
 
     let bestRoute = await fetchRoute(t.lat, t.lng, best.lat, best.lng);
     if (!bestRoute) {
-      const dx = t.lat - best.lat, dy = t.lng - best.lng;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      const m = dist * 111000;
-      bestRoute = { distance: m, duration: Math.round((m/1000)/40*60)*60, coords: [[t.lat, t.lng], [best.lat, best.lng]] };
+      const dx=t.lat-best.lat, dy=t.lng-best.lng, m=Math.sqrt(dx*dx+dy*dy)*111000;
+      bestRoute = {distance:m, duration:Math.round((m/1000)/40*60)*60, coords:[[t.lat,t.lng],[best.lat,best.lng]]};
     }
 
-    const priorDisasters = Object.values(S.fbDisasters).filter(oldD => oldD.assignedTeam === tid && oldD.id !== best.id);
-    for (const oldDis of priorDisasters) {
-      await window._db.setDisaster(oldDis.id, { ...oldDis, assignedTeam: null, route: null });
-      if (S.disMarkers[oldDis.id] && S.disMarkers[oldDis.id].routeLayers) {
-        removeLayers(S.disMarkers[oldDis.id].routeLayers);
-        S.disMarkers[oldDis.id].routeLayers = [];
-      }
-      oldDis.assignedTeam = null;
-      oldDis.route = null;
+    for (const oldD of Object.values(S.fbDisasters).filter(d=>d.assignedTeam===tid&&d.id!==best.id)) {
+      await window._db.setDisaster(oldD.id, {...oldD, assignedTeam:null, route:null});
+      if (S.disMarkers[oldD.id]) { removeLayers(S.disMarkers[oldD.id].routeLayers); S.disMarkers[oldD.id].routeLayers=[]; }
     }
 
-    const km  = (bestRoute.distance/1000).toFixed(2);
-    const min = Math.round(bestRoute.duration/60);
-    await window._db.setDisaster(best.id, {...best, assignedTeam:tid, route:{coords:bestRoute.coords, km, min}});
+    const km=(bestRoute.distance/1000).toFixed(2), min=Math.round(bestRoute.duration/60);
+    await window._db.setDisaster(best.id, {...best, assignedTeam:tid, route:{coords:bestRoute.coords,km,min}});
     await window._db.setTeam(tid, {...t, available:false});
-    S.fbTeams[tid].available = false;
-    log(`${t.name} dispatched. POPPED Priority: ${best.id.substring(4,9)}`,'ok');
-    showHint(`✓ ${t.name} popped top disaster.`);
-  } finally {
-    S.isRouting = false;
-    updateAllUI();
-  }
+    log(`${t.name} dispatched → ${PRIORITY[best.priority].label}`,'ok');
+    showHint(`✓ ${t.name} dispatched.`);
+  } finally { S.isRouting=false; updateAllUI(); }
 }
-async function clearAllDisasters() {
-  for (const d of Object.values(S.fbDisasters)) await fbClearDisaster(d.id);
+
+async function clearMyDisasters() {
+  for (const d of Object.values(S.fbDisasters)) if(isMine(d)) await fbClearDisaster(d.id);
 }
-async function clearAllRoutes() {
+async function clearMyRoutes() {
   for (const d of Object.values(S.fbDisasters)) {
+    if (!isMine(d)) continue;
     if (d.assignedTeam) await window._db.setTeam(d.assignedTeam, {...S.fbTeams[d.assignedTeam], available:true});
     await window._db.setDisaster(d.id, {...d, assignedTeam:null, route:null});
     if (S.disMarkers[d.id]) { removeLayers(S.disMarkers[d.id].routeLayers); S.disMarkers[d.id].routeLayers=[]; }
   }
-  log('All routes cleared.','warn');
+  log('My routes cleared.','warn');
+}
+async function clearMyBlocks() {
+  for (const [id,b] of Object.entries(S.fbBlocks)) if(isMine(b)) await window._db.removeBlock(id);
+}
+async function clearMyTeams() {
+  for (const [id,t] of Object.entries(S.fbTeams)) if(isMine(t)) await fbDeleteTeam(id);
 }
 
 /* ══════════════════════════════════════════
@@ -733,15 +1274,15 @@ function handleBlock(lat, lng) {
     const p1=S.blkPt1, p2={lat,lng};
     map.removeLayer(S.blkMark); S.blkMark=null; S.blkPt1=null;
     const id='blk_'+Date.now();
-    window._db.setBlock(id, {id, p1, p2});
+    window._db.setBlock(id, {id, p1, p2, ownerUid: S.uid});
     log(`🚧 Road blocked`,'alert');
+    logToCloudflare('BLOCK', 'CREATED', id, {p1, p2});
     setTimeout(()=>setMode('block'), 800);
   }
 }
 
 function renderBlocks(data) {
   S.fbBlocks = data || {};
-
   Object.keys(S.blockLayers).forEach(id => {
     if (!S.fbBlocks[id]) {
       const b=S.blockLayers[id];
@@ -749,64 +1290,46 @@ function renderBlocks(data) {
       delete S.blockLayers[id];
     }
   });
-
   Object.values(S.fbBlocks).forEach(b => {
     if (!S.blockLayers[b.id]) {
-      const line = L.polyline([[b.p1.lat,b.p1.lng],[b.p2.lat,b.p2.lng]],{color:'#ff3b3b',weight:5,opacity:.85,dashArray:'10,8',lineCap:'round'}).addTo(map);
-      const m1   = L.circleMarker([b.p1.lat,b.p1.lng],{radius:6,color:'#ff3b3b',fillColor:'#ff3b3b',fillOpacity:1,weight:2}).addTo(map);
-      const m2   = L.circleMarker([b.p2.lat,b.p2.lng],{radius:6,color:'#ff3b3b',fillColor:'#ff3b3b',fillOpacity:1,weight:2}).addTo(map);
-      S.blockLayers[b.id] = {line,m1,m2};
+      const line=L.polyline([[b.p1.lat,b.p1.lng],[b.p2.lat,b.p2.lng]],{color:'#ff3b3b',weight:5,opacity:.85,dashArray:'10,8',lineCap:'round'}).addTo(map);
+      const m1=L.circleMarker([b.p1.lat,b.p1.lng],{radius:6,color:'#ff3b3b',fillColor:'#ff3b3b',fillOpacity:1,weight:2}).addTo(map);
+      const m2=L.circleMarker([b.p2.lat,b.p2.lng],{radius:6,color:'#ff3b3b',fillColor:'#ff3b3b',fillOpacity:1,weight:2}).addTo(map);
+      S.blockLayers[b.id]={line,m1,m2};
     }
   });
-
   updateAllUI();
 }
 
 async function fbClearBlock(id) {
+  const b = S.fbBlocks[id]; if(!b || !isMine(b)) { showHint('⚠ Not your block.'); return; }
   await window._db.removeBlock(id);
   log('Road block removed.','ok');
-}
-async function clearAllBlocks() {
-  for (const id of Object.keys(S.fbBlocks)) await window._db.removeBlock(id);
-}
-
-/* ══════════════════════════════════════════
- *  RESET ALL
- * ══════════════════════════════════════════ */
-async function resetAll() {
-  await clearAllDisasters();
-  await clearAllBlocks();
-  // Remove all teams and re-add initial 4
-  for (const id of Object.keys(S.fbTeams)) await window._db.removeTeam(id);
-  for (let i=0; i<INITIAL_TEAMS.length; i++) {
-    const t = INITIAL_TEAMS[i];
-    await window._db.setTeam(t.id, {...t, color:TEAM_COLORS[i], available:true});
-  }
-  log('Reset complete.','ok');
+  logToCloudflare('BLOCK', 'DELETED', id, {});
 }
 
 /* ══════════════════════════════════════════
  *  ORS FETCH
  * ══════════════════════════════════════════ */
 async function fetchRoute(fLat,fLng,tLat,tLng) {
-  const body = {coordinates:[[fLng,fLat],[tLng,tLat]], instructions:false};
-  const blocks = Object.values(S.fbBlocks);
+  const body={coordinates:[[fLng,fLat],[tLng,tLat]],instructions:false};
+  const blocks=Object.values(S.fbBlocks);
   if (blocks.length>0) {
-    const polys = blocks.map(b => {
-      const off=0.0003, dLat=b.p2.lat-b.p1.lat, dLng=b.p2.lng-b.p1.lng;
+    const polys=blocks.map(b=>{
+      const off=0.0003,dLat=b.p2.lat-b.p1.lat,dLng=b.p2.lng-b.p1.lng;
       const len=Math.sqrt(dLat*dLat+dLng*dLng)||1;
-      const nx=(-dLng/len)*off, ny=(dLat/len)*off;
+      const nx=(-dLng/len)*off,ny=(dLat/len)*off;
       return [[[b.p1.lng+nx,b.p1.lat+ny],[b.p2.lng+nx,b.p2.lat+ny],[b.p2.lng-nx,b.p2.lat-ny],[b.p1.lng-nx,b.p1.lat-ny],[b.p1.lng+nx,b.p1.lat+ny]]];
     });
     body.options={avoid_polygons:{type:'MultiPolygon',coordinates:polys}};
   }
   try {
-    const res=await fetch(ORS_URL,{method:'POST',headers:{'Authorization':ORS_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const res=await fetch(ORS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!res.ok) return null;
     const data=await res.json();
     if(!data.features?.length) return null;
     const f=data.features[0];
-    return {distance:f.properties.summary.distance, duration:f.properties.summary.duration, coords:f.geometry.coordinates.map(c=>[c[1],c[0]])};
+    return {distance:f.properties.summary.distance,duration:f.properties.summary.duration,coords:f.geometry.coordinates.map(c=>[c[1],c[0]])};
   } catch(e){return null;}
 }
 
@@ -814,35 +1337,34 @@ async function fetchRoute(fLat,fLng,tLat,tLng) {
  *  DRAW ROUTE
  * ══════════════════════════════════════════ */
 function drawRoute(coords) {
-  if (!coords || !coords.length) return [];
-  const shadow = L.polyline(coords,{color:'#000',weight:9,opacity:0.25}).addTo(map);
-  const line   = L.polyline(coords,{color:'#1a73e8',weight:5,opacity:0.9,lineJoin:'round',lineCap:'round'}).addTo(map);
-  const dash   = L.polyline(coords,{color:'#fff',weight:2,opacity:0.45,dashArray:'8,16',dashOffset:'0'}).addTo(map);
+  if (!coords||!coords.length) return [];
+  const shadow=L.polyline(coords,{color:'#000',weight:9,opacity:0.25}).addTo(map);
+  const line  =L.polyline(coords,{color:'#1a73e8',weight:5,opacity:0.9,lineJoin:'round',lineCap:'round'}).addTo(map);
+  const dash  =L.polyline(coords,{color:'#fff',weight:2,opacity:0.45,dashArray:'8,16',dashOffset:'0'}).addTo(map);
   let offset=0;
-  const anim = setInterval(()=>{ offset=(offset-1)%24; dash.setStyle({dashOffset:String(offset)}); },50);
+  const anim=setInterval(()=>{offset=(offset-1)%24;dash.setStyle({dashOffset:String(offset)});},50);
   S.animTimers.push(anim);
   return [shadow,line,dash,{_anim:anim}];
 }
 function removeLayers(layers=[]) {
-  layers.forEach(r=>{ if(r._anim){clearInterval(r._anim); S.animTimers=S.animTimers.filter(t=>t!==r._anim);} else{try{map.removeLayer(r);}catch(e){}} });
+  layers.forEach(r=>{if(r._anim){clearInterval(r._anim);S.animTimers=S.animTimers.filter(t=>t!==r._anim);}else{try{map.removeLayer(r);}catch(e){}}});
 }
 
 /* ══════════════════════════════════════════
  *  TEAM POPUP
  * ══════════════════════════════════════════ */
 function showTeamPopup(tid) {
-  const t   = S.fbTeams[tid]; if(!t) return;
-  const on  = t.available===false;
-  const dis = on ? Object.values(S.fbDisasters).find(d=>d.assignedTeam===tid) : null;
-  const cfg = dis ? PRIORITY[dis.priority] : null;
-
+  const t=S.fbTeams[tid]; if(!t) return;
+  const on=t.available===false;
+  const dis=on?Object.values(S.fbDisasters).find(d=>d.assignedTeam===tid):null;
+  const cfg=dis?PRIORITY[dis.priority]:null;
   let html=`<div style="font-family:'Share Tech Mono',monospace;font-size:11px;line-height:1.9;">
     <div style="color:${t.color};font-weight:700;font-size:12px;margin-bottom:4px;">🚁 ${t.name}</div>`;
-  if (on && dis) {
+  if (on&&dis) {
     html+=`<div style="color:var(--warning);">◉ ON MISSION</div>
-    <div>Target &nbsp;: ${cfg.icon} Disaster</div>
+    <div>Target : ${cfg.icon} Disaster</div>
     <div>Priority : <span style="color:${cfg.color};">${cfg.label}</span></div>
-    ${dis.route ? `<div>Dist &nbsp;&nbsp;&nbsp;: <b style="color:#fff;">${dis.route.km} km</b></div><div>ETA &nbsp;&nbsp;&nbsp;&nbsp;: <b style="color:#fff;">~${dis.route.min} min</b></div>` : ''}`;
+    ${dis.route?`<div>Dist : <b style="color:#fff;">${dis.route.km} km</b></div><div>ETA : <b style="color:#fff;">~${dis.route.min} min</b></div>`:''}`;
   } else {
     html+=`<div style="color:var(--safe);">◉ READY — awaiting deployment</div>`;
   }
@@ -859,21 +1381,20 @@ function updateAllUI() {
   const blocks    = Object.values(S.fbBlocks);
   const routes    = disasters.filter(d=>d.route).length;
 
-  // Header stats
-  ['s-teams','ps-teams'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=teams.length; });
-  ['s-disasters','ps-disasters'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=disasters.length; });
-  ['s-routes','ps-routes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=routes; });
+  ['s-teams','ps-teams'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=teams.length;});
+  ['s-disasters','ps-disasters'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=disasters.length;});
+  ['s-routes','ps-routes'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=routes;});
 
-  // System status
-  const dot=document.getElementById('sys-dot'), st=document.getElementById('sys-status');
-  if (disasters.length>0) { dot.className='pulse red'; st.textContent='DISASTER ACTIVE'; st.style.color='var(--danger)'; }
-  else                     { dot.className='pulse';     st.textContent='SYSTEM NOMINAL';  st.style.color='var(--dim)'; }
+  const dot=document.getElementById('sys-dot'),st=document.getElementById('sys-status');
+  if (disasters.length>0){dot.className='pulse red';st.textContent='DISASTER ACTIVE';st.style.color='var(--danger)';}
+  else{dot.className='pulse';st.textContent='SYSTEM NOMINAL';st.style.color='var(--dim)';}
 
-  // Admin team list
+  // Admin team list — only MY teams
   const tl=document.getElementById('team-list');
   if (tl) {
-    if (!teams.length) { tl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;padding:8px;">No teams deployed.</div>'; }
-    else tl.innerHTML=teams.map(t=>{
+    const myTeams=teams.filter(t=>isMine(t));
+    if (!myTeams.length){tl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;padding:8px;">No teams deployed.</div>';}
+    else tl.innerHTML=myTeams.map(t=>{
       const on=t.available===false;
       return `<div class="list-item" id="ti-${t.id}">
         <div class="dot" style="background:${t.color};box-shadow:0 0 6px ${t.color};"></div>
@@ -882,21 +1403,22 @@ function updateAllUI() {
           <div style="font-size:9px;color:var(--dim);font-family:'Share Tech Mono',monospace;">${Number(t.lat).toFixed(4)}, ${Number(t.lng).toFixed(4)}</div>
         </div>
         <span class="badge" style="background:${on?'rgba(255,170,0,0.12)':'rgba(0,255,136,0.12)'};color:${on?'var(--warning)':'var(--safe)'};">${on?'ON MISSION':'READY'}</span>
-        ${!on ? `<button class="icon-btn" onclick="fbReassignTeam('${t.id}')" title="Assign to nearest unassigned disaster" style="color:var(--accent);">⇒</button>` : ''}
-        <button class="icon-btn" onclick="startRename('${t.id}')" title="Edit">✎</button>
-        <button class="icon-btn" onclick="startMoveTeam('${t.id}')" title="Move Location" style="color:var(--warning);">📍</button>
-        <button class="icon-btn del" onclick="fbDeleteTeam('${t.id}')" title="Delete">✕</button>
+        ${!on?`<button class="icon-btn" onclick="fbReassignTeam('${t.id}')" style="color:var(--accent);">⇒</button>`:''}
+        <button class="icon-btn" onclick="startRename('${t.id}')">✎</button>
+        <button class="icon-btn" onclick="startMoveTeam('${t.id}')" style="color:var(--warning);">📍</button>
+        <button class="icon-btn del" onclick="fbDeleteTeam('${t.id}')">✕</button>
       </div>`;
     }).join('');
   }
 
-  // Admin disaster list
-  const dlc=document.getElementById('disaster-list-card'), dl=document.getElementById('disaster-list');
-  if (dlc && dl) {
-    if (!disasters.length) { dlc.style.display='none'; }
+  // Admin disaster list — only MY disasters
+  const dlc=document.getElementById('disaster-list-card'),dl=document.getElementById('disaster-list');
+  if (dlc&&dl) {
+    const myDis=disasters.filter(d=>isMine(d));
+    if (!myDis.length){dlc.style.display='none';}
     else {
       dlc.style.display='';
-      const sorted=[...disasters].sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
+      const sorted=[...myDis].sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
       dl.innerHTML=sorted.map(d=>{
         const cfg=PRIORITY[d.priority];
         const tn=d.assignedTeam?(S.fbTeams[d.assignedTeam]?.name||'—'):'Unassigned';
@@ -910,13 +1432,14 @@ function updateAllUI() {
     }
   }
 
-  // Admin block list
-  const blc=document.getElementById('blocked-card'), bll=document.getElementById('blocked-list');
-  if (blc && bll) {
-    if (!blocks.length) { blc.style.display='none'; }
+  // Admin block list — only MY blocks
+  const blc=document.getElementById('blocked-card'),bll=document.getElementById('blocked-list');
+  if (blc&&bll) {
+    const myBlocks=blocks.filter(b=>isMine(b));
+    if (!myBlocks.length){blc.style.display='none';}
     else {
       blc.style.display='';
-      bll.innerHTML=blocks.map(b=>`
+      bll.innerHTML=myBlocks.map(b=>`
         <div class="b-item">
           <div class="b-info">🚧 Road Block<br><span style="font-size:8px;opacity:.7;">(${Number(b.p1.lat).toFixed(3)},${Number(b.p1.lng).toFixed(3)}) → (${Number(b.p2.lat).toFixed(3)},${Number(b.p2.lng).toFixed(3)})</span></div>
           <button class="b-clear" onclick="fbClearBlock('${b.id}')">✕</button>
@@ -924,10 +1447,35 @@ function updateAllUI() {
     }
   }
 
+  // Last route card
+  const rc=document.getElementById('route-card'),ri=document.getElementById('route-info');
+  if (rc&&ri) {
+    const myWithRoute=disasters.filter(d=>d.route&&isMine(d));
+    if (myWithRoute.length>0) {
+      const d=myWithRoute[myWithRoute.length-1];
+      const cfg=PRIORITY[d.priority],tn=d.assignedTeam?(S.fbTeams[d.assignedTeam]?.name||'—'):'—';
+      rc.style.display='';
+      ri.innerHTML=`<div style="color:#7bb8ff;margin-bottom:4px;">${cfg.icon} [${cfg.label}]</div>
+        <div>Team : <b style="color:#fff;">${tn}</b></div>
+        ${d.route?`<div>Dist : <b style="color:#fff;">${d.route.km} km</b></div><div>ETA : <b style="color:#fff;">~${d.route.min} min</b></div>`:''}`;
+    } else rc.style.display='none';
+  }
+
+  // DS Tables — my pending disasters
+  const myUnassigned=disasters.filter(d=>!d.assignedTeam&&isMine(d));
+  const dsPq=document.getElementById('ds-pq');
+  if (dsPq) {
+    const es=myUnassigned.filter(d=>d.priority==='emergency').sort((a,b)=>b.id.localeCompare(a.id));
+    const rq=myUnassigned.filter(d=>d.priority!=='emergency').sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
+    const combined = [...es, ...rq];
+    if(!combined.length) dsPq.innerHTML='<div class="ds-empty">QUEUE IS EMPTY</div>';
+    else dsPq.innerHTML=combined.map((d,i)=>`<div class="ds-item"><span>#${i+1} ${PRIORITY[d.priority].icon} #${d.id.split('_')[2]||d.id}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
+  }
+
   // Public team list
   const ptl=document.getElementById('pub-team-list');
   if (ptl) {
-    if (!teams.length) { ptl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;">No teams deployed.</div>'; }
+    if (!teams.length){ptl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;">No teams deployed.</div>';}
     else ptl.innerHTML=teams.map(t=>{
       const on=t.available===false;
       return `<div class="list-item" style="cursor:pointer;" onclick="showTeamPopup('${t.id}')">
@@ -941,7 +1489,7 @@ function updateAllUI() {
   // Public disaster list
   const pdl=document.getElementById('pub-disaster-list');
   if (pdl) {
-    if (!disasters.length) { pdl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;">No active disasters.</div>'; }
+    if (!disasters.length){pdl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;">No active disasters.</div>';}
     else {
       const sorted=[...disasters].sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
       pdl.innerHTML=sorted.map(d=>{
@@ -956,99 +1504,86 @@ function updateAllUI() {
   }
 
   // Public blocked roads
-  const pbc=document.getElementById('pub-blocked-card'), pbl=document.getElementById('pub-blocked-list');
-  if (pbc && pbl) {
-    pbc.style.display = blocks.length ? '' : 'none';
-    pbl.innerHTML = blocks.map(b=>`<div class="b-item"><div class="b-info">🚧 Road Block<br><span style="font-size:8px;opacity:.7;">(${Number(b.p1.lat).toFixed(3)},${Number(b.p1.lng).toFixed(3)}) → (${Number(b.p2.lat).toFixed(3)},${Number(b.p2.lng).toFixed(3)})</span></div></div>`).join('');
+  const pbc=document.getElementById('pub-blocked-card'),pbl=document.getElementById('pub-blocked-list');
+  if (pbc&&pbl) {
+    pbc.style.display=blocks.length?'':'none';
+    pbl.innerHTML=blocks.map(b=>`<div class="b-item"><div class="b-info">🚧 Road Block<br><span style="font-size:8px;opacity:.7;">(${Number(b.p1.lat).toFixed(3)},${Number(b.p1.lng).toFixed(3)}) → (${Number(b.p2.lat).toFixed(3)},${Number(b.p2.lng).toFixed(3)})</span></div></div>`).join('');
   }
 
-  // Last route card
-  const rc=document.getElementById('route-card'), ri=document.getElementById('route-info');
-  if (rc && ri && disasters.length>0) {
-    const withRoute=disasters.filter(d=>d.route);
-    if (withRoute.length>0) {
-      const d=withRoute[withRoute.length-1];
-      const cfg=PRIORITY[d.priority], tn=d.assignedTeam?(S.fbTeams[d.assignedTeam]?.name||'—'):'—';
-      rc.style.display='';
-      ri.innerHTML=`<div style="color:#7bb8ff;margin-bottom:4px;">${cfg.icon} [${cfg.label}]</div>
-        <div>Team : <b style="color:#fff;">${tn}</b></div>
-        ${d.route?`<div>Dist : <b style="color:#fff;">${d.route.km} km</b></div><div>ETA &nbsp;: <b style="color:#fff;">~${d.route.min} min</b></div>`:''}`;
-    }
-  } else if (rc) rc.style.display='none';
-
-  // Data Structure Tables (Stack & Priority Queue)
-  const unassigned = disasters.filter(d => !d.assignedTeam);
-  
-  const dsStack = document.getElementById('ds-stack');
-  if (dsStack) {
-    const emergencyStack = unassigned.filter(d => d.priority === 'emergency');
-    emergencyStack.sort((a,b) => b.id.localeCompare(a.id));
-    if (!emergencyStack.length) dsStack.innerHTML = '<div class="ds-empty">STACK IS EMPTY</div>';
-    else dsStack.innerHTML = emergencyStack.map((d, i) => `<div class="ds-item"><span>[Top-${i}] ${PRIORITY[d.priority].icon} #${d.id.split('_')[2]}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
-  }
-
-  const dsPq = document.getElementById('ds-pq');
-  if (dsPq) {
-    const restPQ = unassigned.filter(d => d.priority !== 'emergency');
-    restPQ.sort((a,b) => PRIORITY[a.priority].order - PRIORITY[b.priority].order);
-    if (!restPQ.length) dsPq.innerHTML = '<div class="ds-empty">PQ IS EMPTY</div>';
-    else dsPq.innerHTML = restPQ.map((d, i) => `<div class="ds-item"><span>#${i+1} ${PRIORITY[d.priority].icon} #${d.id.split('_')[2]}</span><span style="color:${PRIORITY[d.priority].color}">${PRIORITY[d.priority].label}</span></div>`).join('');
-  }
+  // SA admin list refresh if panel open
+  if (document.getElementById('sa-panel').style.display==='flex') renderSAAdminList();
 }
 
 /* ══════════════════════════════════════════
- *  TEAM RENAME
+ *  FIREBASE INIT
  * ══════════════════════════════════════════ */
-function startMoveTeam(id) {
-  const t = S.fbTeams[id]; if(!t) return;
-  showHint(`📍 Click on map to set new location for ${t.name}`);
-  map.once('click', async e => {
-    await window._db.setTeam(id, {...t, lat:e.latlng.lat, lng:e.latlng.lng});
-    log(`${t.name} moved to new location.`,'ok');
-    showHint(`✓ ${t.name} location updated.`);
-  });
-}
-
-function startRename(id) {
-  const t=S.fbTeams[id]; if(!t) return;
-  const el=document.getElementById(`tn-${id}`); if(!el) return;
-  const old=t.name;
-  el.innerHTML=`<input class="name-input" id="ni-${id}" value="${old}" maxlength="20"/>`;
-  const inp=document.getElementById(`ni-${id}`); inp.focus(); inp.select();
-  const save=()=>{ const v=inp.value.trim(); if(v&&v!==old) fbRenameTeam(id,v); else updateAllUI(); };
-  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') save(); if(e.key==='Escape') updateAllUI(); });
-  inp.addEventListener('blur', save);
-}
-
-/* ══════════════════════════════════════════
- *  FIREBASE INIT + WATCHERS
- * ══════════════════════════════════════════ */
-window.addEventListener('firebase-ready', async () => {
-  // Hide loading, show login
-  document.getElementById('loading-screen').style.display='none';
-  document.getElementById('login-overlay').style.display='flex';
-
-  // Update sync dot
+window.addEventListener('firebase-ready', () => {
   document.getElementById('sync-dot').className   = 'sync-dot';
   document.getElementById('sync-label').textContent = 'LIVE';
 
-  // Watch all collections — renders happen automatically on any change
+  // Watch all (public data — no auth required)
   window._db.watchTeams(renderTeams);
   window._db.watchDisasters(renderDisasters);
   window._db.watchBlocks(renderBlocks);
+  window._db.watchAdmins(data => {
+    S.fbAdmins = data || {};
+    if (document.getElementById('sa-panel').style.display==='flex') renderSAAdminList();
+  });
 
-  // Seed initial teams if DB is empty
-  setTimeout(async () => {
-    if (Object.keys(S.fbTeams).length===0) {
-      for (let i=0;i<INITIAL_TEAMS.length;i++) {
-        const t=INITIAL_TEAMS[i];
-        await window._db.setTeam(t.id, {...t, color:TEAM_COLORS[i], available:true});
+  // Auth state change
+  window._auth.onAuthChange(async user => {
+    document.getElementById('loading-screen').style.display = 'none';
+
+    if (user) {
+      S.uid     = user.uid;
+      S.isSA    = user.uid === SUPER_ADMIN_UID;
+      S.isAdmin = true;
+
+      document.getElementById('login-overlay').style.display  = 'none';
+      document.getElementById('admin-sidebar').style.display  = 'flex';
+      document.getElementById('public-sidebar').style.display = 'none';
+      document.getElementById('logout-btn').style.display     = 'block';
+
+      if (S.isSA) {
+        document.getElementById('role-badge').textContent = 'SUPER ADMIN';
+        document.getElementById('role-badge').className   = 'role-badge superadmin';
+        document.getElementById('sa-btn').style.display   = 'block';
+        document.getElementById('auto-deploy-card').style.display = '';
+        updateAutoModeUI();
+        // Register super admin in DB if not already
+        await window._db.setAdminMeta(user.uid, {
+          uid: user.uid,
+          displayName: 'Sayem ⭐',
+          email: user.email,
+          createdAt: Date.now(),
+        });
+      } else {
+        document.getElementById('role-badge').textContent = 'ADMIN';
+        document.getElementById('role-badge').className   = 'role-badge admin';
+        document.getElementById('sa-btn').style.display   = 'none';
       }
+
+      setMode('disaster');
+      log(`Logged in as ${S.isSA ? 'Super Admin' : 'Admin'}.`, 'ok');
+
+      // Start watching chat after login (requires auth)
+      window._db.watchChat(renderChat);
+
+      // Watch auto mode from Firebase — all admins get realtime update
+      window._db.watchAutoMode(val => {
+        S.autoMode = val;
+        updateAutoModeUI();
+      });
+    } else {
+      // Not logged in — show login screen
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('login-overlay').style.display  = 'flex';
+      document.getElementById('admin-sidebar').style.display  = 'none';
     }
-  }, 1500);
+  });
 });
 
-// If Firebase takes too long
+// Timeout fallback
 setTimeout(()=>{
   if (document.getElementById('loading-screen').style.display!=='none') {
     document.getElementById('loading-screen').style.display='none';
@@ -1056,8 +1591,7 @@ setTimeout(()=>{
     document.getElementById('sync-dot').className='sync-dot off';
     document.getElementById('sync-label').textContent='OFFLINE';
   }
-}, 6000);
+}, 8000);
 </script>
 </body>
 </html>
-
