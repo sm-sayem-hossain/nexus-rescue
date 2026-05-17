@@ -64,6 +64,10 @@ window._db = {
 
   setAutoMode:     (val)    => set(ref(db, 'settings/autoMode'), val),
   watchAutoMode:   (cb)     => onValue(ref(db, 'settings/autoMode'), s => cb(s.val() || false)),
+
+  setTeamLeader:        (teamId, adminUid)  => set(ref(db, `teams/${teamId}/leaderId`), adminUid),
+  setTeamLiveLocation:  (teamId, locObj)    => set(ref(db, `teams/${teamId}/liveLocation`), locObj),
+  clearTeamLiveLocation:(teamId)            => remove(ref(db, `teams/${teamId}/liveLocation`)),
 };
 
 /* ── Auth helpers ── */
@@ -232,7 +236,33 @@ input[type=text]:focus,input[type=password]:focus,input[type=email]:focus{border
 .leaflet-tooltip-dark{background:#0a1520!important;border:1px solid #0f2a3d!important;color:#00e5ff!important;font-family:'Share Tech Mono',monospace!important;font-size:10px!important;}
 .pub-hint{text-align:center;font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);padding:8px;border:1px solid var(--border);border-radius:4px;letter-spacing:1px;}
 
-/* LOADING */
+/* LIVE LOCATION CARD */
+.live-loc-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);}
+.live-loc-row:last-child{border-bottom:none;padding-bottom:0;}
+.live-loc-label{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--text);letter-spacing:.5px;}
+.live-toggle{cursor:pointer;width:40px;height:22px;border-radius:11px;background:rgba(255,255,255,0.05);border:1px solid var(--border);position:relative;transition:all .3s;flex-shrink:0;}
+.live-toggle.on{background:rgba(0,255,136,0.15);border-color:var(--safe);}
+.live-knob{position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--dim);transition:all .3s;}
+.live-toggle.on .live-knob{left:21px;background:var(--safe);}
+.live-badge{display:inline-flex;align-items:center;gap:4px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--safe);letter-spacing:1px;margin-left:6px;}
+.live-dot-anim{width:6px;height:6px;border-radius:50%;background:var(--safe);animation:kpulse-fast .6s infinite;}
+.loc-err{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--danger);margin-top:4px;}
+/* DEVIATION WARNING */
+.deviation-warn{font-size:9px;color:var(--warning);font-family:'Share Tech Mono',monospace;margin-left:4px;animation:kpulse 1s infinite;}
+/* LEADER ASSIGN — searchable dropdown */
+.leader-wrap{position:relative;margin-top:4px;}
+.leader-search{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);font-family:"Share Tech Mono",monospace;font-size:9px;padding:4px 8px;border-radius:3px;outline:none;box-sizing:border-box;}
+.leader-search:focus{border-color:var(--accent);}
+.leader-search::placeholder{color:var(--dim);}
+.leader-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:#0a1520;border:1px solid var(--accent);border-top:none;border-radius:0 0 4px 4px;z-index:9999;max-height:120px;overflow-y:auto;}
+.leader-dropdown.open{display:block;}
+.leader-option{padding:5px 8px;font-family:"Share Tech Mono",monospace;font-size:9px;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border);}
+.leader-option:last-child{border-bottom:none;}
+.leader-option:hover,.leader-option.selected{background:rgba(0,229,255,0.1);color:var(--accent);}
+.leader-option.none-opt{color:var(--dim);}
+.leader-dropdown::-webkit-scrollbar{width:3px;}
+.leader-dropdown::-webkit-scrollbar-thumb{background:var(--border);}
+
 #loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:8000;gap:16px;}
 .loading-logo{font-family:'Orbitron',monospace;font-size:22px;font-weight:900;color:var(--accent);letter-spacing:4px;text-shadow:var(--glow);}
 .loading-bar{width:200px;height:2px;background:var(--border);border-radius:2px;overflow:hidden;}
@@ -406,6 +436,11 @@ input[type=text]:focus,input[type=password]:focus,input[type=email]:focus{border
           </div>
         </div>
 
+        <div class="card" id="live-loc-card" style="display:none;">
+          <div class="ctitle">📡 LIVE LOCATION SHARING</div>
+          <div id="live-loc-teams" style="display:flex;flex-direction:column;"></div>
+        </div>
+
         <div class="card" id="auto-deploy-card" style="display:none;">
           <div class="ctitle">⚡ AUTO DEPLOYMENT MODE</div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -563,6 +598,9 @@ const S = {
   fbAdmins:     {},
   blkPt1: null, blkMark: null,
   animTimers: [],
+  deviationDetected: {},
+  lastRecalcTime: {},
+  liveWatchIds: {},
 };
 
 /* ══════════════════════════════════════════
@@ -585,13 +623,15 @@ map.on('click', async e => {
 /* ══════════════════════════════════════════
  *  ICONS
  * ══════════════════════════════════════════ */
-function teamIcon(color, name, onMission) {
+function teamIcon(color, name, onMission, hasLive) {
   const st = onMission
     ? `<div style="background:rgba(255,170,0,0.9);color:#000;font-family:'Share Tech Mono',monospace;font-size:7px;padding:1px 4px;border-radius:2px;text-align:center;margin-top:1px;">ON MISSION</div>` : '';
+  const liveDot = hasLive
+    ? `<div style="position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--safe);border:1px solid #000;animation:kpulse-fast .6s infinite;"></div>` : '';
   return L.divIcon({
     className:'',
-    html:`<div style="background:${color}22;border:2px solid ${color};border-radius:50% 50% 50% 0;width:34px;height:34px;transform:rotate(-45deg);box-shadow:0 0 10px ${color}88;display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);font-size:15px;">🚁</span></div>
-    <div style="background:rgba(10,21,32,0.9);border:1px solid ${color};border-radius:3px;padding:1px 5px;font-family:'Share Tech Mono',monospace;font-size:8px;color:${color};white-space:nowrap;text-align:center;margin-top:2px;">${name}</div>${st}`,
+    html:`<div style="position:relative;display:inline-block;">${liveDot}<div style="background:${color}22;border:2px solid ${color};border-radius:50% 50% 50% 0;width:34px;height:34px;transform:rotate(-45deg);box-shadow:0 0 10px ${color}88;display:flex;align-items:center;justify-content:center;"><span style="transform:rotate(45deg);font-size:15px;">🚁</span></div></div>
+    <div style="background:rgba(10,21,32,0.9);border:1px solid ${color};border-radius:3px;padding:1px 5px;font-family:'Share Tech Mono',monospace;font-size:8px;color:${color};white-space:nowrap;text-align:center;margin-top:2px;">${name}${hasLive?' 📡':''}</div>${st}`,
     iconSize:[64,56], iconAnchor:[17,34],
   });
 }
@@ -843,7 +883,8 @@ async function autoAssignToDisaster(dis) {
   }
   if (!nearest) return;
 
-  let route = await fetchRoute(nearest.lat, nearest.lng, dis.lat, dis.lng);
+  const nearestRouteLoc = getTeamRouteLoc(nearest);
+  let route = await fetchRoute(nearestRouteLoc.lat, nearestRouteLoc.lng, dis.lat, dis.lng);
   if (!route) {
     const m = minDist * 1000;
     route = { distance: m, duration: Math.round((m/1000)/40*60)*60, coords: [[nearest.lat, nearest.lng],[dis.lat, dis.lng]] };
@@ -869,7 +910,8 @@ async function autoAssignToTeam(team) {
   });
   const best = sorted[0];
 
-  let route = await fetchRoute(team.lat, team.lng, best.lat, best.lng);
+  const teamRouteLoc = getTeamRouteLoc(team);
+  let route = await fetchRoute(teamRouteLoc.lat, teamRouteLoc.lng, best.lat, best.lng);
   if (!route) {
     const m = distKm(team.lat, team.lng, best.lat, best.lng) * 1000;
     route = { distance: m, duration: Math.round((m/1000)/40*60)*60, coords: [[team.lat, team.lng],[best.lat, best.lng]] };
@@ -1109,12 +1151,17 @@ function renderTeams(data) {
   });
   Object.values(S.fbTeams).forEach(t => {
     const onMission = t.available === false;
+    const hasLive   = t.liveLocation && isLocationRecent(t.liveLocation);
+    const displayLat = hasLive ? t.liveLocation.lat : t.lat;
+    const displayLng = hasLive ? t.liveLocation.lng : t.lng;
+
     if (!S.teamMarkers[t.id]) {
-      const marker = L.marker([t.lat, t.lng], {icon: teamIcon(t.color, t.name, onMission), draggable:false}).addTo(map);
+      const marker = L.marker([displayLat, displayLng], {icon: teamIcon(t.color, t.name, onMission, hasLive), draggable:false}).addTo(map);
       marker.on('click', () => showTeamPopup(t.id));
       S.teamMarkers[t.id] = {marker, color:t.color};
     } else {
-      S.teamMarkers[t.id].marker.setIcon(teamIcon(t.color, t.name, onMission));
+      S.teamMarkers[t.id].marker.setIcon(teamIcon(t.color, t.name, onMission, hasLive));
+      S.teamMarkers[t.id].marker.setLatLng([displayLat, displayLng]);
     }
   });
   updateAllUI();
@@ -1224,10 +1271,11 @@ async function fbReassignTeam(tid) {
     const restPQ = unassigned.filter(d => d.priority!=='emergency').sort((a,b)=>PRIORITY[a.priority].order-PRIORITY[b.priority].order);
     const best = [...emergencyStack,...restPQ][0];
 
-    let bestRoute = await fetchRoute(t.lat, t.lng, best.lat, best.lng);
+    const tRouteLoc = getTeamRouteLoc(t);
+    let bestRoute = await fetchRoute(tRouteLoc.lat, tRouteLoc.lng, best.lat, best.lng);
     if (!bestRoute) {
-      const dx=t.lat-best.lat, dy=t.lng-best.lng, m=Math.sqrt(dx*dx+dy*dy)*111000;
-      bestRoute = {distance:m, duration:Math.round((m/1000)/40*60)*60, coords:[[t.lat,t.lng],[best.lat,best.lng]]};
+      const dx=tRouteLoc.lat-best.lat, dy=tRouteLoc.lng-best.lng, m=Math.sqrt(dx*dx+dy*dy)*111000;
+      bestRoute = {distance:m, duration:Math.round((m/1000)/40*60)*60, coords:[[tRouteLoc.lat,tRouteLoc.lng],[best.lat,best.lng]]};
     }
 
     for (const oldD of Object.values(S.fbDisasters).filter(d=>d.assignedTeam===tid&&d.id!==best.id)) {
@@ -1311,15 +1359,33 @@ async function fbClearBlock(id) {
 /* ══════════════════════════════════════════
  *  ORS FETCH
  * ══════════════════════════════════════════ */
+
+// Helper: get best current location for routing (live > last > placed)
+function getTeamRouteLoc(team) {
+  if (team.liveLocation && isLocationRecent(team.liveLocation))
+    return {lat: team.liveLocation.lat, lng: team.liveLocation.lng};
+  if (team.lastLocation)
+    return {lat: team.lastLocation.lat, lng: team.lastLocation.lng};
+  return {lat: team.lat, lng: team.lng};
+}
 async function fetchRoute(fLat,fLng,tLat,tLng) {
-  const body={coordinates:[[fLng,fLat],[tLng,tLat]],instructions:false};
+  const body={coordinates:[[fLng,fLat],[tLng,tLat]],instructions:false,radiuses:[500,500]};
   const blocks=Object.values(S.fbBlocks);
   if (blocks.length>0) {
     const polys=blocks.map(b=>{
-      const off=0.0003,dLat=b.p2.lat-b.p1.lat,dLng=b.p2.lng-b.p1.lng;
+      // Buffer ~130m wide + 45m endpoint extension for reliable ORS avoidance
+      const off=0.0012,ext=0.0004;
+      const dLat=b.p2.lat-b.p1.lat,dLng=b.p2.lng-b.p1.lng;
       const len=Math.sqrt(dLat*dLat+dLng*dLng)||1;
       const nx=(-dLng/len)*off,ny=(dLat/len)*off;
-      return [[[b.p1.lng+nx,b.p1.lat+ny],[b.p2.lng+nx,b.p2.lat+ny],[b.p2.lng-nx,b.p2.lat-ny],[b.p1.lng-nx,b.p1.lat-ny],[b.p1.lng+nx,b.p1.lat+ny]]];
+      const ex=(dLat/len)*ext,ey=(dLng/len)*ext;
+      return [[[
+        [b.p1.lng+nx-ey, b.p1.lat+ny-ex],
+        [b.p2.lng+nx+ey, b.p2.lat+ny+ex],
+        [b.p2.lng-nx+ey, b.p2.lat-ny+ex],
+        [b.p1.lng-nx-ey, b.p1.lat-ny-ex],
+        [b.p1.lng+nx-ey, b.p1.lat+ny-ex]
+      ]]];
     });
     body.options={avoid_polygons:{type:'MultiPolygon',coordinates:polys}};
   }
@@ -1392,24 +1458,47 @@ function updateAllUI() {
   // Admin team list — only MY teams
   const tl=document.getElementById('team-list');
   if (tl) {
-    const myTeams=teams.filter(t=>isMine(t));
-    if (!myTeams.length){tl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;padding:8px;">No teams deployed.</div>';}
-    else tl.innerHTML=myTeams.map(t=>{
+    if (!teams.length){tl.innerHTML='<div style="color:var(--dim);font-family:Share Tech Mono,monospace;font-size:10px;padding:8px;">No teams deployed.</div>';}
+    else tl.innerHTML=teams.map(t=>{
       const on=t.available===false;
-      return `<div class="list-item" id="ti-${t.id}">
-        <div class="dot" style="background:${t.color};box-shadow:0 0 6px ${t.color};"></div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:12px;font-weight:700;" id="tn-${t.id}">${t.name}</div>
-          <div style="font-size:9px;color:var(--dim);font-family:'Share Tech Mono',monospace;">${Number(t.lat).toFixed(4)}, ${Number(t.lng).toFixed(4)}</div>
+      const mine=isMine(t);
+      const devWarn = S.deviationDetected[t.id] ? `<span class="deviation-warn">⚠ Off-route</span>` : '';
+      const ownerName = S.fbAdmins[t.ownerUid]?.displayName || 'Unknown';
+      const currentLeaderName = t.leaderId && S.fbAdmins[t.leaderId] ? S.fbAdmins[t.leaderId].displayName : '';
+      return `<div class="list-item" id="ti-${t.id}" style="flex-direction:column;align-items:stretch;gap:6px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="dot" style="background:${t.color};box-shadow:0 0 6px ${t.color};flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;" id="tn-${t.id}">${t.name}${devWarn}</div>
+            <div style="font-size:9px;color:var(--dim);font-family:'Share Tech Mono',monospace;">${ownerName} · ${Number(t.lat).toFixed(4)}, ${Number(t.lng).toFixed(4)}</div>
+          </div>
+          <span class="badge" style="background:${on?'rgba(255,170,0,0.12)':'rgba(0,255,136,0.12)'};color:${on?'var(--warning)':'var(--safe)'};">${on?'ON MISSION':'READY'}</span>
         </div>
-        <span class="badge" style="background:${on?'rgba(255,170,0,0.12)':'rgba(0,255,136,0.12)'};color:${on?'var(--warning)':'var(--safe)'};">${on?'ON MISSION':'READY'}</span>
-        ${!on?`<button class="icon-btn" onclick="fbReassignTeam('${t.id}')" style="color:var(--accent);">⇒</button>`:''}
-        <button class="icon-btn" onclick="startRename('${t.id}')">✎</button>
-        <button class="icon-btn" onclick="startMoveTeam('${t.id}')" style="color:var(--warning);">📍</button>
-        <button class="icon-btn del" onclick="fbDeleteTeam('${t.id}')">✕</button>
+        ${mine ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+          ${!on?`<button class="icon-btn" onclick="fbReassignTeam('${t.id}')" style="color:var(--accent);">⇒</button>`:''}
+          <button class="icon-btn" onclick="startRename('${t.id}')">✎</button>
+          <button class="icon-btn" onclick="startMoveTeam('${t.id}')" style="color:var(--warning);">📍</button>
+          <button class="icon-btn del" onclick="fbDeleteTeam('${t.id}')">✕</button>
+        </div>
+        <div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);margin-bottom:2px;">LEADER</div>
+          <div class="leader-wrap" id="lw-${t.id}">
+            <input class="leader-search" id="ls-${t.id}" type="text"
+              placeholder="Search admin..."
+              value="${currentLeaderName}"
+              autocomplete="off"
+              onfocus="openLeaderDrop('${t.id}')"
+              oninput="filterLeaderDrop('${t.id}', this.value)"
+              onblur="closeLeaderDropDelayed('${t.id}')"/>
+            <div class="leader-dropdown" id="ld-${t.id}"></div>
+          </div>
+        </div>` : `${t.leaderId && S.fbAdmins[t.leaderId] ? `<div style="font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);">Leader: <span style="color:var(--accent);">${S.fbAdmins[t.leaderId].displayName}</span></div>` : ''}`}
       </div>`;
     }).join('');
   }
+
+  // Update live location card
+  updateLiveLocCard();
 
   // Admin disaster list — only MY disasters
   const dlc=document.getElementById('disaster-list-card'),dl=document.getElementById('disaster-list');
@@ -1582,6 +1671,259 @@ window.addEventListener('firebase-ready', () => {
     }
   });
 });
+
+/* ══════════════════════════════════════════
+ *  SEARCHABLE LEADER DROPDOWN
+ * ══════════════════════════════════════════ */
+const _leaderCloseTimers = {};
+
+function openLeaderDrop(teamId) {
+  filterLeaderDrop(teamId, document.getElementById('ls-' + teamId)?.value || '');
+  const dd = document.getElementById('ld-' + teamId);
+  if (dd) dd.classList.add('open');
+}
+
+function filterLeaderDrop(teamId, query) {
+  const dd = document.getElementById('ld-' + teamId);
+  if (!dd) return;
+  const q = query.trim().toLowerCase();
+  const admins = Object.values(S.fbAdmins);
+  const team = S.fbTeams[teamId];
+  const filtered = admins.filter(a =>
+    !q ||
+    a.displayName.toLowerCase().includes(q) ||
+    (a.email && a.email.toLowerCase().includes(q)) ||
+    a.uid.toLowerCase().includes(q)
+  );
+  let html = `<div class="leader-option none-opt" onmousedown="selectLeader('${teamId}', '', '— None —')">— None —</div>`;
+  html += filtered.map(a =>
+    `<div class="leader-option ${team?.leaderId===a.uid?'selected':''}" onmousedown="selectLeader('${teamId}','${a.uid}','${a.displayName.replace(/'/g,"\\'")}')">
+      <span style="color:var(--accent);">${a.displayName}</span>
+      <span style="color:var(--dim);font-size:8px;margin-left:6px;">${a.email||a.uid}</span>
+    </div>`
+  ).join('');
+  dd.innerHTML = html || '<div class="leader-option none-opt">No match</div>';
+  dd.classList.add('open');
+}
+
+function selectLeader(teamId, uid, name) {
+  const inp = document.getElementById('ls-' + teamId);
+  if (inp) inp.value = uid ? name : '';
+  const dd = document.getElementById('ld-' + teamId);
+  if (dd) dd.classList.remove('open');
+  assignLeader(teamId, uid);
+}
+
+function closeLeaderDropDelayed(teamId) {
+  _leaderCloseTimers[teamId] = setTimeout(() => {
+    const dd = document.getElementById('ld-' + teamId);
+    if (dd) dd.classList.remove('open');
+  }, 200);
+}
+
+/* ══════════════════════════════════════════
+ *  PHASE 1 — LEADER ASSIGNMENT
+ * ══════════════════════════════════════════ */
+async function assignLeader(teamId, adminUid) {
+  const t = S.fbTeams[teamId];
+  if (!t || !isMine(t)) { showHint('⚠ Not your team.'); return; }
+  const val = adminUid === '' ? null : adminUid;
+  await window._db.setTeamLeader(teamId, val);
+  const name = val ? (S.fbAdmins[val]?.displayName || val) : 'None';
+  log(`Leader set: ${t.name} → ${name}`, 'ok');
+}
+
+/* ══════════════════════════════════════════
+ *  PHASE 2 — LIVE LOCATION SHARING TOGGLE
+ * ══════════════════════════════════════════ */
+function updateLiveLocCard() {
+  if (!S.isAdmin) return;
+  const myLeaderTeams = Object.values(S.fbTeams).filter(t => t.leaderId === S.uid);
+  const card = document.getElementById('live-loc-card');
+  const container = document.getElementById('live-loc-teams');
+  if (!card || !container) return;
+
+  if (!myLeaderTeams.length) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  container.innerHTML = myLeaderTeams.map(t => {
+    const isOn = !!S.liveWatchIds[t.id];
+    return `<div class="live-loc-row">
+      <div>
+        <div class="live-loc-label">🚁 ${t.name}${isOn ? `<span class="live-badge"><span class="live-dot-anim"></span>LIVE</span>` : ''}</div>
+        <div id="loc-err-${t.id}" class="loc-err" style="display:none;"></div>
+      </div>
+      <div class="live-toggle ${isOn ? 'on' : ''}" onclick="toggleLiveLocation('${t.id}')">
+        <div class="live-knob"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleLiveLocation(teamId) {
+  if (S.liveWatchIds[teamId]) {
+    // Turn OFF
+    navigator.geolocation.clearWatch(S.liveWatchIds[teamId]);
+    delete S.liveWatchIds[teamId];
+    window._db.clearTeamLiveLocation(teamId);
+    log(`Live location OFF: ${S.fbTeams[teamId]?.name || teamId}`, 'warn');
+    updateLiveLocCard();
+  } else {
+    // Turn ON
+    if (!navigator.geolocation) {
+      showLocError(teamId, 'Geolocation not supported');
+      return;
+    }
+    const watchId = navigator.geolocation.watchPosition(
+      pos => {
+        const locObj = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          timestamp: Date.now()
+        };
+        window._db.setTeamLiveLocation(teamId, locObj);
+        // Always persist lastLocation so route still works after live is turned off
+        const curTeam = S.fbTeams[teamId];
+        if (curTeam) window._db.setTeam(teamId, {...curTeam, lastLocation: {lat: locObj.lat, lng: locObj.lng}});
+        // Check if route start point is far from current live location — force recalc
+        checkRouteStartMismatch(teamId, locObj);
+        checkRouteDeviation(teamId);
+      },
+      err => {
+        showLocError(teamId, 'Location access denied');
+        navigator.geolocation.clearWatch(S.liveWatchIds[teamId]);
+        delete S.liveWatchIds[teamId];
+        window._db.clearTeamLiveLocation(teamId);
+        updateLiveLocCard();
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+    S.liveWatchIds[teamId] = watchId;
+    log(`Live location ON: ${S.fbTeams[teamId]?.name || teamId}`, 'ok');
+    updateLiveLocCard();
+  }
+}
+
+function showLocError(teamId, msg) {
+  const el = document.getElementById(`loc-err-${teamId}`);
+  if (el) { el.textContent = '⚠ ' + msg; el.style.display = 'block'; }
+  setTimeout(() => { if(el) el.style.display = 'none'; }, 4000);
+}
+
+/* ══════════════════════════════════════════
+ *  PHASE 3 — ROUTE DEVIATION DETECTION
+ * ══════════════════════════════════════════ */
+function isLocationRecent(liveLocation) {
+  if (!liveLocation || !liveLocation.timestamp) return false;
+  return (Date.now() - liveLocation.timestamp) < 30000;
+}
+
+// Point-to-segment minimum distance using distKm
+function pointToSegmentDist(pLat, pLng, aLat, aLng, bLat, bLng) {
+  const abLat = bLat - aLat, abLng = bLng - aLng;
+  const apLat = pLat - aLat, apLng = pLng - aLng;
+  const ab2 = abLat*abLat + abLng*abLng;
+  if (ab2 === 0) return distKm(pLat, pLng, aLat, aLng);
+  const t = Math.max(0, Math.min(1, (apLat*abLat + apLng*abLng) / ab2));
+  const closestLat = aLat + t*abLat;
+  const closestLng = aLng + t*abLng;
+  return distKm(pLat, pLng, closestLat, closestLng);
+}
+
+function checkRouteStartMismatch(teamId, locObj) {
+  const team = S.fbTeams[teamId];
+  if (!team) return;
+  const dis = Object.values(S.fbDisasters).find(d => d.assignedTeam === teamId);
+  if (!dis || !dis.route || !dis.route.coords || dis.route.coords.length < 2) return;
+
+  // Route start = first coordinate in the route
+  const routeStart = dis.route.coords[0];
+  const distFromRouteStart = distKm(locObj.lat, locObj.lng, routeStart[0], routeStart[1]);
+
+  // If live location is more than 100m from where route started → recalculate immediately
+  if (distFromRouteStart > 0.1) {
+    const lastTime = S.lastRecalcTime[teamId] || 0;
+    if (Date.now() - lastTime > 30000) {
+      S.lastRecalcTime[teamId] = Date.now();
+      log(`Route start mismatch for ${team.name} (${distFromRouteStart.toFixed(2)}km) — recalculating`, 'warn');
+      recalculateRoute(teamId);
+    }
+  }
+}
+
+function checkRouteDeviation(teamId) {
+  const team = S.fbTeams[teamId];
+  if (!team || !team.liveLocation) return;
+
+  const dis = Object.values(S.fbDisasters).find(d => d.assignedTeam === teamId);
+  if (!dis || !dis.route || !dis.route.coords || dis.route.coords.length < 2) return;
+
+  const { lat, lng } = team.liveLocation;
+  const coords = dis.route.coords;
+  let minDist = Infinity;
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = pointToSegmentDist(lat, lng, coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]);
+    if (d < minDist) minDist = d;
+  }
+
+  if (minDist > 0.05) {
+    S.deviationDetected[teamId] = true;
+    // Cooldown check
+    const lastTime = S.lastRecalcTime[teamId] || 0;
+    if (Date.now() - lastTime > 30000) {
+      S.lastRecalcTime[teamId] = Date.now();
+      recalculateRoute(teamId);
+    }
+  } else {
+    S.deviationDetected[teamId] = false;
+  }
+  updateAllUI();
+}
+
+/* ══════════════════════════════════════════
+ *  PHASE 4 — ROUTE RECALCULATION
+ * ══════════════════════════════════════════ */
+async function recalculateRoute(teamId) {
+  if (S.isRouting) return;
+  S.isRouting = true;
+  try {
+    const team = S.fbTeams[teamId];
+    if (!team) return;
+
+    const liveLoc = (team.liveLocation && isLocationRecent(team.liveLocation))
+      ? team.liveLocation
+      : (team.lastLocation || {lat: team.lat, lng: team.lng});
+    const { lat, lng } = liveLoc;
+    const dis = Object.values(S.fbDisasters).find(d => d.assignedTeam === teamId);
+    if (!dis) return;
+
+    const newRoute = await fetchRoute(lat, lng, dis.lat, dis.lng);
+
+    if (newRoute) {
+      const km  = (newRoute.distance / 1000).toFixed(2);
+      const min = Math.round(newRoute.duration / 60);
+      await window._db.setDisaster(dis.id, {...dis, route: {coords: newRoute.coords, km, min}});
+
+      if (S.disMarkers[dis.id]) {
+        removeLayers(S.disMarkers[dis.id].routeLayers);
+        S.disMarkers[dis.id].routeLayers = drawRoute(newRoute.coords);
+      }
+
+      S.deviationDetected[teamId] = false;
+      log(`Route recalculated for ${team.name} — deviation detected`, 'warn');
+      showHint(`🔄 Route recalculated for ${team.name}`);
+    } else {
+      log(`Route recalculation failed for ${team.name}`, 'alert');
+    }
+  } finally {
+    S.isRouting = false;
+  }
+}
 
 // Timeout fallback
 setTimeout(()=>{
