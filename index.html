@@ -39,8 +39,6 @@ const db   = getDatabase(app);
 const auth = getAuth(app);
 const storage = getStorage(app);
 
-const CF_API_URL = "https://your-cloudflare-worker-url.workers.dev"; // UPDATE THIS
-
 /* ── DB helpers ── */
 window._db = {
   setDisaster:    (id, d) => set(ref(db, `disasters/${id}`), d),
@@ -1369,7 +1367,7 @@ function getTeamRouteLoc(team) {
   return {lat: team.lat, lng: team.lng};
 }
 async function fetchRoute(fLat,fLng,tLat,tLng) {
-  const body={coordinates:[[fLng,fLat],[tLng,tLat]],instructions:false,radiuses:[500,500]};
+  const body={coordinates:[[fLng,fLat],[tLng,tLat]],instructions:false,radiuses:[2000,2000]};
   const blocks=Object.values(S.fbBlocks);
   if (blocks.length>0) {
     const polys=blocks.map(b=>{
