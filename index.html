@@ -889,7 +889,7 @@ async function autoAssignToDisaster(dis) {
   }
   const km  = (route.distance/1000).toFixed(2);
   const min = Math.round(route.duration/60);
-  await window._db.setDisaster(dis.id, {...dis, assignedTeam: nearest.id, route: {coords: route.coords, km, min}});
+  await window._db.setDisaster(dis.id, {...dis, assignedTeam: nearest.id, route: {coordsStr: JSON.stringify(route.coords), km, min}});
   await window._db.setTeam(nearest.id, {...nearest, available: false});
   log(`Auto: ${nearest.name} → ${PRIORITY[dis.priority].label} disaster (${km}km)`, 'ok');
   showHint(`⚡ Auto assigned ${nearest.name} to disaster.`);
@@ -916,7 +916,7 @@ async function autoAssignToTeam(team) {
   }
   const km  = (route.distance/1000).toFixed(2);
   const min = Math.round(route.duration/60);
-  await window._db.setDisaster(best.id, {...best, assignedTeam: team.id, route: {coords: route.coords, km, min}});
+  await window._db.setDisaster(best.id, {...best, assignedTeam: team.id, route: {coordsStr: JSON.stringify(route.coords), km, min}});
   await window._db.setTeam(team.id, {...team, available: false});
   log(`Auto: ${team.name} → ${PRIORITY[best.priority].label} disaster (${km}km)`, 'ok');
   showHint(`⚡ Auto assigned ${team.name} to nearest disaster.`);
@@ -1225,7 +1225,7 @@ function renderDisasters(data) {
   Object.values(S.fbDisasters).forEach(d => {
     if (!S.disMarkers[d.id]) {
       const marker = L.marker([d.lat,d.lng], {icon:disasterIcon(d.priority)}).addTo(map);
-      const routeLayers = d.route ? drawRoute(d.route.coords) : [];
+      const routeLayers = d.route ? drawRoute(getCoords(d.route)) : [];
       S.disMarkers[d.id] = {marker, routeLayers};
     } else {
       S.disMarkers[d.id].marker.setIcon(disasterIcon(d.priority));
@@ -1233,7 +1233,7 @@ function renderDisasters(data) {
         removeLayers(S.disMarkers[d.id].routeLayers);
         S.disMarkers[d.id].routeLayers = [];
       } else if (d.route && S.disMarkers[d.id].routeLayers.length===0) {
-        S.disMarkers[d.id].routeLayers = drawRoute(d.route.coords);
+        S.disMarkers[d.id].routeLayers = drawRoute(getCoords(d.route));
       }
     }
   });
@@ -1282,7 +1282,7 @@ async function fbReassignTeam(tid) {
     }
 
     const km=(bestRoute.distance/1000).toFixed(2), min=Math.round(bestRoute.duration/60);
-    await window._db.setDisaster(best.id, {...best, assignedTeam:tid, route:{coords:bestRoute.coords,km,min}});
+    await window._db.setDisaster(best.id, {...best, assignedTeam:tid, route:{coordsStr:JSON.stringify(bestRoute.coords),km,min}});
     await window._db.setTeam(tid, {...t, available:false});
     log(`${t.name} dispatched → ${PRIORITY[best.priority].label}`,'ok');
     showHint(`✓ ${t.name} dispatched.`);
@@ -1366,6 +1366,22 @@ function getTeamRouteLoc(team) {
     return {lat: team.lastLocation.lat, lng: team.lastLocation.lng};
   return {lat: team.lat, lng: team.lng};
 }
+function getCoords(route) {
+  if (!route) return null;
+  if (route.coordsStr) try { return JSON.parse(route.coordsStr); } catch(e) { return null; }
+  if (route.coords && route.coords.length > 0) return route.coords; // legacy fallback
+  return null;
+}
+
+function simplifyCoords(coords, step=4) {
+  if (!coords || coords.length <= 2) return coords;
+  const out = [];
+  for (let i = 0; i < coords.length; i += step) out.push(coords[i]);
+  const last = coords[coords.length - 1];
+  if (out[out.length - 1] !== last) out.push(last);
+  return out;
+}
+
 async function fetchRoute(fLat,fLng,tLat,tLng) {
   const body={coordinates:[[fLng,fLat],[tLng,tLat]],instructions:false,radiuses:[2000,2000]};
   const blocks=Object.values(S.fbBlocks);
@@ -1393,7 +1409,7 @@ async function fetchRoute(fLat,fLng,tLat,tLng) {
     const data=await res.json();
     if(!data.features?.length) return null;
     const f=data.features[0];
-    return {distance:f.properties.summary.distance,duration:f.properties.summary.duration,coords:f.geometry.coordinates.map(c=>[c[1],c[0]])};
+    return {distance:f.properties.summary.distance,duration:f.properties.summary.duration,coords:simplifyCoords(f.geometry.coordinates.map(c=>[c[1],c[0]]),4)};
   } catch(e){return null;}
 }
 
@@ -1836,10 +1852,12 @@ function checkRouteStartMismatch(teamId, locObj) {
   const team = S.fbTeams[teamId];
   if (!team) return;
   const dis = Object.values(S.fbDisasters).find(d => d.assignedTeam === teamId);
-  if (!dis || !dis.route || !dis.route.coords || dis.route.coords.length < 2) return;
+  if (!dis || !dis.route || !dis.route.coordsStr || dis.route.coordsStr.length < 5) return;
+  const _coords = getCoords(dis.route);
+  if (!_coords || _coords.length < 2) return;
 
   // Route start = first coordinate in the route
-  const routeStart = dis.route.coords[0];
+  const routeStart = _coords[0];
   const distFromRouteStart = distKm(locObj.lat, locObj.lng, routeStart[0], routeStart[1]);
 
   // If live location is more than 100m from where route started → recalculate immediately
@@ -1858,11 +1876,10 @@ function checkRouteDeviation(teamId) {
   if (!team || !team.liveLocation) return;
 
   const dis = Object.values(S.fbDisasters).find(d => d.assignedTeam === teamId);
-  if (!dis || !dis.route || !dis.route.coords || dis.route.coords.length < 2) return;
-
+  if (!dis || !dis.route || !dis.route.coordsStr) return;
+  const coords = getCoords(dis.route);
+  if (!coords || coords.length < 2) return;
   const { lat, lng } = team.liveLocation;
-  const coords = dis.route.coords;
-  let minDist = Infinity;
 
   for (let i = 0; i < coords.length - 1; i++) {
     const d = pointToSegmentDist(lat, lng, coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1]);
@@ -1905,7 +1922,7 @@ async function recalculateRoute(teamId) {
     if (newRoute) {
       const km  = (newRoute.distance / 1000).toFixed(2);
       const min = Math.round(newRoute.duration / 60);
-      await window._db.setDisaster(dis.id, {...dis, route: {coords: newRoute.coords, km, min}});
+      await window._db.setDisaster(dis.id, {...dis, route: {coordsStr: JSON.stringify(newRoute.coords), km, min}});
 
       if (S.disMarkers[dis.id]) {
         removeLayers(S.disMarkers[dis.id].routeLayers);
