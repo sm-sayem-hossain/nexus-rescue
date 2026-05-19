@@ -4,90 +4,151 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NEXUS RESCUE — Under Construction</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #050d14;
-    --accent: #00e5ff;
-    --danger: #ff3b3b;
-    --dim: #4a6a7d;
-    --text: #c8dce8;
-    --glow: 0 0 20px rgba(0,229,255,0.4);
-  }
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: var(--bg);
+    background: #000;
     height: 100vh;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     font-family: 'Share Tech Mono', monospace;
   }
 
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg, transparent, transparent 2px,
-      rgba(0,229,255,0.012) 2px, rgba(0,229,255,0.012) 4px
-    );
-    pointer-events: none;
+  .window {
+    border: 2px solid #00ff41;
+    width: 420px;
+    box-shadow: 0 0 16px rgba(0,255,65,0.3), inset 0 0 40px rgba(0,255,65,0.03);
+    image-rendering: pixelated;
   }
 
-  .logo {
-    font-family: 'Orbitron', monospace;
-    font-size: clamp(28px, 6vw, 56px);
-    font-weight: 900;
-    color: var(--accent);
-    letter-spacing: 6px;
-    text-shadow: var(--glow);
-    margin-bottom: 12px;
-  }
-  .logo span { color: var(--danger); }
-
-  .line {
-    width: 260px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    margin: 28px auto;
+  .titlebar {
+    background: #00ff41;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 6px;
   }
 
-  .tag {
+  .titlebar-title {
     font-size: 11px;
-    letter-spacing: 3px;
-    color: var(--dim);
-    margin-bottom: 32px;
+    color: #000;
+    letter-spacing: 1px;
   }
 
-  .message {
-    font-size: clamp(13px, 2vw, 16px);
-    color: var(--text);
-    letter-spacing: 2px;
+  .titlebar-btns {
+    display: flex;
+    gap: 2px;
+  }
+
+  .titlebar-btns span {
+    display: inline-block;
+    width: 14px;
+    height: 12px;
+    border: 1px solid #000;
+    font-size: 9px;
+    color: #000;
     text-align: center;
-    line-height: 2;
+    line-height: 12px;
+    cursor: default;
   }
 
-  .message em {
-    color: var(--accent);
-    font-style: normal;
-    text-shadow: var(--glow);
+  .body {
+    background: #000;
+    padding: 24px 20px 20px;
+  }
+
+  .label {
+    font-size: 18px;
+    color: #00ff41;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+    text-shadow: 0 0 8px rgba(0,255,65,0.5);
+  }
+
+  .bar-track {
+    border: 1px solid #00ff41;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    padding: 3px;
+    gap: 3px;
+    position: relative;
+  }
+
+  .bar-fill {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .bar-fill span {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background: #00ff41;
+    flex-shrink: 0;
+    animation: flicker 3s infinite;
+  }
+
+  .bar-fill span:nth-child(odd) { animation-delay: 0.1s; }
+  .bar-fill span:last-child {
+    background: transparent;
+    border: 1px solid #00ff41;
+    animation: blink-last 1s infinite;
+  }
+
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96% { opacity: 0.6; }
+  }
+
+  @keyframes blink-last {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
+  .pct {
+    font-size: 14px;
+    color: #00ff41;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+
+  .tagline {
+    margin-top: 18px;
+    font-size: 11px;
+    color: #00ff41;
+    opacity: 0.5;
+    letter-spacing: 1px;
   }
 </style>
 </head>
 <body>
 
-  <div class="logo">NEXUS<span>::</span>RESCUE</div>
-  <div class="tag">// DISASTER ROUTE OPTIMIZER //</div>
-
-  <div class="line"></div>
-
-  <div class="message">
-    UNDER CONSTRUCTION<br>
-    we're coming back with a <em>strong upgrade.</em>
+  <div class="window">
+    <div class="titlebar">
+      <span class="titlebar-title">nexus_rescue.exe</span>
+      <div class="titlebar-btns">
+        <span>_</span><span>□</span><span>×</span>
+      </div>
+    </div>
+    <div class="body">
+      <div class="label">something bigger is loading...</div>
+      <div class="bar-track">
+        <div class="bar-fill">
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span>
+        </div>
+        <span class="pct">99%</span>
+      </div>
+      <div class="tagline">// under construction</div>
+    </div>
   </div>
 
 </body>
